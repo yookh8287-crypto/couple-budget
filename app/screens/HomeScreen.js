@@ -1,0 +1,166 @@
+'use client'
+
+import { useState, useEffect } from 'react'
+import TransactionItem from '@/app/components/TransactionItem'
+import { formatKRW, filterByMember, getSavings } from '@/lib/data'
+import { X } from 'lucide-react'
+
+const MONTHS = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월']
+
+export default function HomeScreen({ transactions, onToggleUnnecessary, onUpdate }) {
+  const [member, setMember] = useState('all')
+  const [monthIdx, setMonthIdx] = useState(new Date().getMonth())
+  const [year, setYear] = useState(new Date().getFullYear())
+  const [savings, setSavings] = useState([])
+  const [modal, setModal] = useState(null)
+
+  useEffect(() => {
+    getSavings().then(setSavings)
+  }, [])
+
+  function changeMonth(d) {
+    let m = monthIdx + d
+    let y = year
+    if (m < 0) { m = 11; y-- }
+    if (m > 11) { m = 0; y++ }
+    setMonthIdx(m)
+    setYear(y)
+  }
+
+  const filtered = filterByMember(transactions, member)
+  const incomeList = filtered.filter(t => t.amount > 0)
+  const expenseList = filtered.filter(t => t.amount < 0)
+  const income = incomeList.reduce((s, t) => s + t.amount, 0)
+  const expense = expenseList.reduce((s, t) => s + Math.abs(t.amount), 0)
+  const remain = income - expense
+  const budget = 5000000
+  const budgetPct = Math.min(Math.round((expense / budget) * 100), 100)
+  const fillClass = budgetPct >= 100 ? 'fill-red' : budgetPct >= 80 ? 'fill-amber' : 'fill-green'
+
+  const modalConfig = {
+    income: { title: '수입 내역', list: incomeList },
+    remain: { title: '잔액 내역', list: filtered },
+    all: { title: '전체 거래 내역', list: filtered },
+  }
+
+  return (
+    <div style={{ paddingBottom: 90 }}>
+      <div className="topbar">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: 18, fontWeight: 700 }}>우리 가계부</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <button onClick={() => changeMonth(-1)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: 'var(--text-secondary)', padding: '2px 6px' }}>‹</button>
+            <span style={{ fontSize: 13, fontWeight: 600, minWidth: 72, textAlign: 'center' }}>{year}년 {MONTHS[monthIdx]}</span>
+            <button onClick={() => changeMonth(1)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: 'var(--text-secondary)', padding: '2px 6px' }}>›</button>
+          </div>
+        </div>
+      </div>
+
+      <div className="member-tabs">
+        {[['all', '전체'], ['h', '👨 남편'], ['w', '👩 아내']].map(([val, label]) => (
+          <button key={val} className={`member-tab ${member === val ? 'active' : ''}`} onClick={() => setMember(val)}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <div className="card" style={{ marginTop: 12 }}>
+        <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4 }}>이번 달 총 지출</div>
+        <div style={{ fontSize: 28, fontWeight: 700, marginBottom: 14 }}>-{formatKRW(expense)}</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
+          <div className="stat-box" onClick={() => setModal('income')} style={{ cursor: 'pointer' }}>
+            <div className="stat-label">총 수입 <span style={{ fontSize: 10, color: 'var(--blue)' }}>▶ 보기</span></div>
+            <div className="stat-value color-income">+{formatKRW(income)}</div>
+          </div>
+          <div className="stat-box" onClick={() => setModal('remain')} style={{ cursor: 'pointer' }}>
+            <div className="stat-label">남은 금액 <span style={{ fontSize: 10, color: 'var(--blue)' }}>▶ 보기</span></div>
+            <div className="stat-value">{formatKRW(remain)}</div>
+          </div>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-secondary)', marginBottom: 5 }}>
+          <span>예산 사용률 (예산 {formatKRW(budget)})</span>
+          <span>{budgetPct}%</span>
+        </div>
+        <div className="progress-bar">
+          <div className={`progress-fill ${fillClass}`} style={{ width: `${budgetPct}%` }} />
+        </div>
+      </div>
+
+      {savings.length > 0 && (
+        <div className="card" style={{ marginTop: 10 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+            <span style={{ fontSize: 14, fontWeight: 700 }}>🐷 저축 목표</span>
+            <span style={{ fontSize: 11, background: 'var(--green-light)', color: 'var(--green)', padding: '3px 8px', borderRadius: 6, fontWeight: 600 }}>{savings.length}개 진행 중</span>
+          </div>
+          {savings.map(s => {
+            const pct = Math.round((s.current / s.target) * 100)
+            return (
+              <div key={s.id} style={{ marginBottom: 12 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
+                  <span style={{ fontSize: 13, fontWeight: 600 }}>{s.icon} {s.name}</span>
+                  <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{formatKRW(s.current)} / {formatKRW(s.target)} ({pct}%)</span>
+                </div>
+                <div className="progress-bar">
+                  <div className={`progress-fill ${pct >= 80 ? 'fill-green' : 'fill-amber'}`} style={{ width: `${pct}%` }} />
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px 6px' }}>
+        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)' }}>최근 거래 내역</span>
+        <button onClick={() => setModal('all')} style={{ fontSize: 12, color: 'var(--blue)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
+          자세히 보기 →
+        </button>
+      </div>
+      <div style={{ background: 'var(--bg-primary)', borderRadius: 'var(--radius-lg)', margin: '0 16px', overflow: 'hidden', border: '1px solid var(--border)' }}>
+        {filtered.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '32px 0', fontSize: 13, color: 'var(--text-secondary)' }}>
+            아직 거래 내역이 없어요<br />
+            <span style={{ fontSize: 12 }}>+ 버튼으로 추가해보세요</span>
+          </div>
+        ) : (
+          filtered.slice(0, 5).map(tx => (
+            <TransactionItem key={tx.id} tx={tx} onToggleUnnecessary={onToggleUnnecessary} onUpdate={onUpdate} />
+          ))
+        )}
+      </div>
+
+      {modal && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
+          zIndex: 50, display: 'flex', alignItems: 'flex-end', justifyContent: 'center'
+        }} onClick={() => setModal(null)}>
+          <div style={{
+            background: 'var(--bg-primary)', borderRadius: '20px 20px 0 0',
+            width: '100%', maxWidth: 430, maxHeight: '80vh',
+            display: 'flex', flexDirection: 'column',
+          }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 20px 12px', borderBottom: '1px solid var(--border)' }}>
+              <span style={{ fontSize: 16, fontWeight: 700 }}>{modalConfig[modal].title}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                {modal === 'income' && <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--green)' }}>+{formatKRW(income)}</span>}
+                {modal === 'remain' && <span style={{ fontSize: 14, fontWeight: 700 }}>{formatKRW(remain)}</span>}
+                {modal === 'all' && <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{filtered.length}건</span>}
+                <button onClick={() => setModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}>
+                  <X size={22} />
+                </button>
+              </div>
+            </div>
+            <div style={{ overflowY: 'auto', flex: 1, paddingBottom: 20 }}>
+              {modalConfig[modal].list.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '32px 0', fontSize: 13, color: 'var(--text-secondary)' }}>내역이 없어요</div>
+              ) : (
+                modalConfig[modal].list.map(tx => (
+                  <TransactionItem key={tx.id} tx={tx} onToggleUnnecessary={onToggleUnnecessary} onUpdate={onUpdate} />
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
