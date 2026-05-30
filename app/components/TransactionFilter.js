@@ -1,6 +1,3 @@
-bash
-
-cat > /mnt/user-data/outputs/couple-budget/app/components/TransactionFilter.js << 'EOF'
 'use client'
 
 export const FILTER_OPTIONS = [
@@ -54,7 +51,3 @@ export default function TransactionFilter({ value, onChange }) {
     </div>
   )
 }
-EOF
-출력
-
-exit code 0
