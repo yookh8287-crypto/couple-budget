@@ -15,6 +15,7 @@ export default function HomeScreen({ transactions, onToggleUnnecessary, onUpdate
   const [savings, setSavings] = useState([])
   const [modal, setModal] = useState(null)
   const [filter, setFilter] = useState('latest')
+  const [modalFilter, setModalFilter] = useState('latest')
 
   useEffect(() => {
     getSavings().then(setSavings)
@@ -29,6 +30,11 @@ export default function HomeScreen({ transactions, onToggleUnnecessary, onUpdate
     setYear(y)
   }
 
+  function openModal(type) {
+    setModal(type)
+    setModalFilter('latest')
+  }
+
   const filtered = filterByMember(transactions, member)
   const incomeList = filtered.filter(t => t.amount > 0)
   const expenseList = filtered.filter(t => t.amount < 0)
@@ -38,13 +44,29 @@ export default function HomeScreen({ transactions, onToggleUnnecessary, onUpdate
   const budget = 5000000
   const budgetPct = Math.min(Math.round((expense / budget) * 100), 100)
   const fillClass = budgetPct >= 100 ? 'fill-red' : budgetPct >= 80 ? 'fill-amber' : 'fill-green'
-
   const filteredAndSorted = applyFilter(filtered, filter)
 
   const modalConfig = {
-    income: { title: '수입 내역', list: applyFilter(incomeList, filter) },
-    remain: { title: '잔액 내역', list: filteredAndSorted },
-    all: { title: '전체 거래 내역', list: filteredAndSorted },
+    income: {
+      title: '수입 내역',
+      list: applyFilter(incomeList, modalFilter),
+      summary: formatKRW(income),
+      summaryColor: 'var(--green)',
+      count: incomeList.length,
+    },
+    expense: {
+      title: '지출 내역',
+      list: applyFilter(expenseList, modalFilter),
+      summary: `-${formatKRW(expense)}`,
+      summaryColor: 'var(--text-primary)',
+      count: expenseList.length,
+    },
+    all: {
+      title: '전체 거래 내역',
+      list: applyFilter(filtered, modalFilter),
+      summary: null,
+      count: filtered.length,
+    },
   }
 
   return (
@@ -72,13 +94,13 @@ export default function HomeScreen({ transactions, onToggleUnnecessary, onUpdate
         <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4 }}>이번 달 총 지출</div>
         <div style={{ fontSize: 28, fontWeight: 700, marginBottom: 14 }}>-{formatKRW(expense)}</div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
-          <div className="stat-box" onClick={() => setModal('income')} style={{ cursor: 'pointer' }}>
+          <div className="stat-box" onClick={() => openModal('income')} style={{ cursor: 'pointer' }}>
             <div className="stat-label">총 수입 <span style={{ fontSize: 10, color: 'var(--blue)' }}>▶ 보기</span></div>
             <div className="stat-value color-income">{formatKRW(income)}</div>
           </div>
-          <div className="stat-box" onClick={() => setModal('remain')} style={{ cursor: 'pointer' }}>
-            <div className="stat-label">남은 금액 <span style={{ fontSize: 10, color: 'var(--blue)' }}>▶ 보기</span></div>
-            <div className="stat-value">{formatKRW(remain)}</div>
+          <div className="stat-box" onClick={() => openModal('expense')} style={{ cursor: 'pointer' }}>
+            <div className="stat-label">총 지출 <span style={{ fontSize: 10, color: 'var(--blue)' }}>▶ 보기</span></div>
+            <div className="stat-value">-{formatKRW(expense)}</div>
           </div>
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-secondary)', marginBottom: 5 }}>
@@ -115,7 +137,7 @@ export default function HomeScreen({ transactions, onToggleUnnecessary, onUpdate
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px 0' }}>
         <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)' }}>최근 거래 내역</span>
-        <button onClick={() => setModal('all')} style={{ fontSize: 12, color: 'var(--blue)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
+        <button onClick={() => openModal('all')} style={{ fontSize: 12, color: 'var(--blue)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
           자세히 보기 →
         </button>
       </div>
@@ -142,21 +164,28 @@ export default function HomeScreen({ transactions, onToggleUnnecessary, onUpdate
         }} onClick={() => setModal(null)}>
           <div style={{
             background: 'var(--bg-primary)', borderRadius: '20px 20px 0 0',
-            width: '100%', maxWidth: 430, maxHeight: '80vh',
+            width: '100%', maxWidth: 430, maxHeight: '85vh',
             display: 'flex', flexDirection: 'column',
           }} onClick={e => e.stopPropagation()}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 20px 8px', borderBottom: '1px solid var(--border)' }}>
-              <span style={{ fontSize: 16, fontWeight: 700 }}>{modalConfig[modal].title}</span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                {modal === 'income' && <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--green)' }}>{formatKRW(income)}</span>}
-                {modal === 'remain' && <span style={{ fontSize: 14, fontWeight: 700 }}>{formatKRW(remain)}</span>}
-                {modal === 'all' && <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{filteredAndSorted.length}건</span>}
+            <div style={{ padding: '20px 20px 8px', borderBottom: '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                <span style={{ fontSize: 16, fontWeight: 700 }}>{modalConfig[modal].title}</span>
                 <button onClick={() => setModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}>
                   <X size={22} />
                 </button>
               </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                {modalConfig[modal].summary && (
+                  <span style={{ fontSize: 14, fontWeight: 700, color: modalConfig[modal].summaryColor }}>
+                    {modalConfig[modal].summary}
+                  </span>
+                )}
+                <span style={{ fontSize: 12, color: 'var(--text-secondary)', marginLeft: 'auto' }}>
+                  총 {modalConfig[modal].count}건
+                </span>
+              </div>
             </div>
-            <TransactionFilter value={filter} onChange={setFilter} />
+            <TransactionFilter value={modalFilter} onChange={setModalFilter} />
             <div style={{ overflowY: 'auto', flex: 1, paddingBottom: 20 }}>
               {modalConfig[modal].list.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '32px 0', fontSize: 13, color: 'var(--text-secondary)' }}>내역이 없어요</div>
