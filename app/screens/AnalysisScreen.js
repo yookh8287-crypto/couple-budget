@@ -232,8 +232,8 @@ export default function AnalysisScreen({ transactions }) {
         </>
       )}
 
-      {/* 불필요한 소비 목록 */}
-      <div className="card" style={{ marginTop: 10 }}>
+{/* 불필요한 소비 목록 - 카테고리별에서만 표시 */}
+      {viewMode === 'category' && <div className="card" style={{ marginTop: 10 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
           <span style={{ fontSize: 14, fontWeight: 700 }}>🚩 불필요한 소비</span>
           <span style={{ fontSize: 11, background: 'var(--red-light)', color: 'var(--red)', padding: '3px 8px', borderRadius: 6, fontWeight: 600 }}>
@@ -256,7 +256,7 @@ export default function AnalysisScreen({ transactions }) {
             </div>
           ))
         )}
-      </div>
+      </div>}
     </div>
   )
 }
