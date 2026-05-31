@@ -22,8 +22,27 @@
   --radius-lg: 16px;
 }
 
+[data-theme="dark"] {
+  --bg-primary: #1c1c1e;
+  --bg-secondary: #2c2c2e;
+  --bg-tertiary: #000000;
+  --text-primary: #f2f2f7;
+  --text-secondary: #8e8e93;
+  --text-tertiary: #48484a;
+  --border: #38383a;
+  --blue: #0a84ff;
+  --blue-light: #0a2a4a;
+  --green: #30d158;
+  --green-light: #0a2a1a;
+  --red: #ff453a;
+  --red-light: #2a0a0a;
+  --orange: #ff9f0a;
+  --orange-light: #2a1a0a;
+  --amber: #ffd60a;
+}
+
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg-primary: #1c1c1e;
     --bg-secondary: #2c2c2e;
     --bg-tertiary: #000000;
@@ -51,8 +70,9 @@
 }
 
 html {
-  touch-action: pan-x pan-y;
-  -ms-touch-action: pan-x pan-y;
+  touch-action: pan-y;
+  -ms-touch-action: pan-y;
+  overflow-x: hidden;
 }
 
 body {
@@ -60,7 +80,8 @@ body {
   background: var(--bg-tertiary);
   color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
-  overscroll-behavior: none;
+  overscroll-behavior-x: none;
+  overflow-x: hidden;
 }
 
 .app-shell {
@@ -69,6 +90,7 @@ body {
   background: var(--bg-tertiary);
   min-height: 100vh;
   position: relative;
+  overflow-x: hidden;
 }
 
 .card {
@@ -263,7 +285,6 @@ body {
 }
 
 .stat-value { font-size: 18px; font-weight: 700; }
-
 .color-income { color: var(--green); }
 .color-expense { color: var(--text-primary); }
 .color-red { color: var(--red); }

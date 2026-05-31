@@ -18,6 +18,15 @@ export default function RootLayout({ children }) {
         <link rel="apple-touch-icon" sizes="120x120" href="/icon-192.png" />
         <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png" />
         <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+        <script dangerouslySetInnerHTML={{__html: `
+          (function() {
+            try {
+              var theme = localStorage.getItem('theme');
+              if (theme === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+              else if (theme === 'light') document.documentElement.setAttribute('data-theme', 'light');
+            } catch(e) {}
+          })();
+        `}} />
       </head>
       <body>{children}</body>
     </html>

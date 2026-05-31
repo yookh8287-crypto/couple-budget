@@ -80,8 +80,8 @@ export default function HomeScreen({ transactions, onToggleUnnecessary, onUpdate
       </div>
 
       <div className="card" style={{ marginTop: 12 }}>
-        <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4 }}>{year}년 {MONTHS[monthIdx]} 총 지출</div>
-        <div style={{ fontSize: 28, fontWeight: 700, marginBottom: 14 }}>-{formatKRW(expense)}</div>
+        <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4 }}>{year}년 {MONTHS[monthIdx]} 순 지출 (지출-수입)</div>
+        <div style={{ fontSize: 28, fontWeight: 700, marginBottom: 14, color: remain < 0 ? 'var(--red)' : 'var(--text-primary)' }}>{remain < 0 ? '-' : ''}{formatKRW(Math.abs(remain))}</div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
           <div className="stat-box" onClick={() => openModal('income')} style={{ cursor: 'pointer' }}>
             <div className="stat-label">총 수입 <span style={{ fontSize: 10, color: 'var(--blue)' }}>▶ 보기</span></div>
