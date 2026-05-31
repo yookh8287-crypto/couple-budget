@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { Bell, Link, ChevronRight, Users, Download, Pencil, Check, X, Tag, LogOut, Moon, Sun, Wallet } from 'lucide-react'
-import FixedExpenseModal from '@/app/components/FixedExpenseModal'
+import FixedExpenseModal from '../components/FixedExpenseModal'
 import { supabase } from '@/lib/data'
 
 const DEFAULT_EXPENSE_CATS = [
@@ -40,16 +40,31 @@ export default function SettingsScreen({ onImport, onSignOut, user, profile, cou
   const [editingBudget, setEditingBudget] = useState(null)
   const [showBudgetEdit, setShowBudgetEdit] = useState(false)
   const [showFixed, setShowFixed] = useState(false)
+  const [coupleCode, setCoupleCode] = useState('')
+  const [partnerProfile, setPartnerProfile] = useState(null)
 
   useEffect(() => {
     const theme = localStorage.getItem('theme')
     setDarkMode(theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches))
-    if (coupleId) loadBudgets()
+    if (coupleId) {
+      loadBudgets()
+      loadCoupleCode()
+    }
   }, [coupleId])
 
   async function loadBudgets() {
     const { data } = await supabase.from('budgets').select('*').eq('couple_id', coupleId)
     if (data && data.length > 0) setBudgets(data)
+  }
+
+  async function loadCoupleCode() {
+    const { data } = await supabase.from('couples').select('code').eq('id', coupleId).single()
+    if (data) setCoupleCode(data.code)
+    const { data: profiles } = await supabase.from('profiles').select('*').eq('couple_id', coupleId)
+    if (profiles) {
+      const partner = profiles.find(p => p.id !== user?.id)
+      if (partner) setPartnerProfile(partner)
+    }
   }
 
   function toggleDarkMode() {
@@ -119,6 +134,46 @@ export default function SettingsScreen({ onImport, onSignOut, user, profile, cou
             <LogOut size={14} /> 로그아웃
           </button>
         </div>
+      </div>
+
+      {/* 커플 연결 */}
+      <div className="card" style={{ marginTop: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+          <Users size={18} color="var(--blue)" />
+          <span style={{ fontSize: 14, fontWeight: 700 }}>배우자 초대</span>
+        </div>
+        {coupleCode ? (
+          <div style={{ textAlign: 'center', padding: '16px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)', marginBottom: 10 }}>
+            <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 8 }}>배우자에게 아래 코드를 알려주세요</div>
+            <div style={{ fontSize: 32, fontWeight: 700, letterSpacing: 8, color: 'var(--blue)' }}>{coupleCode}</div>
+            <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 8 }}>배우자가 회원가입 후 이 코드를 입력하면 연결돼요</div>
+          </div>
+          {partnerProfile && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'var(--green-light)', borderRadius: 'var(--radius-sm)', marginBottom: 10 }}>
+              <span style={{ fontSize: 20 }}>{partnerProfile.role === 'h' ? '👨' : '👩'}</span>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{partnerProfile.nickname}</div>
+                <div style={{ fontSize: 11, color: 'var(--green)' }}>● 연결됨</div>
+              </div>
+            </div>
+          )}
+        ) : (
+          <div style={{ textAlign: 'center', padding: '16px 0', fontSize: 13, color: 'var(--text-secondary)' }}>
+            코드를 불러오는 중...
+          </div>
+        )}
+        <button style={{
+          width: '100%', padding: '12px', borderRadius: 'var(--radius-sm)', border: '1px dashed var(--border)',
+          background: 'none', fontSize: 13, color: 'var(--text-secondary)', cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+        }} onClick={() => {
+          if (coupleCode) {
+            navigator.clipboard?.writeText(coupleCode)
+            alert(`코드 ${coupleCode} 가 복사됐어요!`)
+          }
+        }}>
+          <Link size={14} /> 코드 복사하기
+        </button>
       </div>
 
       {/* 화면 설정 */}
@@ -243,13 +298,10 @@ export default function SettingsScreen({ onImport, onSignOut, user, profile, cou
               <button onClick={() => setShowBudgetEdit(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}><X size={22} /></button>
             </div>
             <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>월 예산 금액</div>
-            <input
-              type="number"
-              value={editingBudget.newAmount}
+            <input type="number" value={editingBudget.newAmount}
               onChange={e => setEditingBudget(prev => ({ ...prev, newAmount: e.target.value }))}
               placeholder="0"
-              style={{ width: '100%', padding: '14px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', fontSize: 20, fontWeight: 700, outline: 'none', background: 'var(--bg-primary)', color: 'var(--text-primary)', marginBottom: 20 }}
-            />
+              style={{ width: '100%', padding: '14px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', fontSize: 20, fontWeight: 700, outline: 'none', background: 'var(--bg-primary)', color: 'var(--text-primary)', marginBottom: 20 }} />
             <button onClick={() => saveBudget(editingBudget, parseInt(editingBudget.newAmount) || 0)} style={{ width: '100%', padding: '16px', borderRadius: 'var(--radius-md)', background: 'var(--blue)', color: 'white', border: 'none', fontSize: 16, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
               <Check size={18} /> 저장하기
             </button>
@@ -316,6 +368,7 @@ export default function SettingsScreen({ onImport, onSignOut, user, profile, cou
           </div>
         </div>
       )}
+
       {showFixed && (
         <FixedExpenseModal
           onClose={() => setShowFixed(false)}
