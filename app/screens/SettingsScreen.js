@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { Bell, Link, ChevronRight, Users, Download, Pencil, Check, X, Tag, LogOut, Moon, Sun, Wallet } from 'lucide-react'
+import FixedExpenseModal from '@/app/components/FixedExpenseModal'
 import { supabase } from '@/lib/data'
 
 const DEFAULT_EXPENSE_CATS = [
@@ -38,6 +39,7 @@ export default function SettingsScreen({ onImport, onSignOut, user, profile, cou
   const [budgets, setBudgets] = useState(DEFAULT_BUDGETS)
   const [editingBudget, setEditingBudget] = useState(null)
   const [showBudgetEdit, setShowBudgetEdit] = useState(false)
+  const [showFixed, setShowFixed] = useState(false)
 
   useEffect(() => {
     const theme = localStorage.getItem('theme')
@@ -141,6 +143,17 @@ export default function SettingsScreen({ onImport, onSignOut, user, profile, cou
             <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{budgets.length}개 카테고리</span>
             <ChevronRight size={16} color="var(--text-tertiary)" />
           </div>
+        </button>
+      </div>
+
+      {/* 고정 지출 */}
+      <div className="card" style={{ marginTop: 10 }}>
+        <button onClick={() => setShowFixed(true)} style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 18 }}>🔁</span>
+            <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>고정 지출 관리</span>
+          </div>
+          <ChevronRight size={16} color="var(--text-tertiary)" />
         </button>
       </div>
 
@@ -302,6 +315,13 @@ export default function SettingsScreen({ onImport, onSignOut, user, profile, cou
             </button>
           </div>
         </div>
+      )}
+      {showFixed && (
+        <FixedExpenseModal
+          onClose={() => setShowFixed(false)}
+          coupleId={coupleId}
+          onApply={() => window.location.reload()}
+        />
       )}
     </div>
   )

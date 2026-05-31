@@ -8,7 +8,7 @@ import { X } from 'lucide-react'
 
 const MONTHS = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월']
 
-export default function HomeScreen({ transactions, onToggleUnnecessary, onUpdate, coupleId }) {
+export default function HomeScreen({ transactions, onToggleUnnecessary, onUpdate, coupleId, onToggleExcluded }) {
   const [member, setMember] = useState('all')
   const [monthIdx, setMonthIdx] = useState(new Date().getMonth())
   const [year, setYear] = useState(new Date().getFullYear())
@@ -41,7 +41,8 @@ export default function HomeScreen({ transactions, onToggleUnnecessary, onUpdate
     return d.getFullYear() === year && d.getMonth() === monthIdx
   })
 
-  const filtered = filterByMember(monthFiltered, member)
+  const activeMonthFiltered = monthFiltered.filter(t => !t.excluded)
+  const filtered = filterByMember(activeMonthFiltered, member)
   const incomeList = filtered.filter(t => t.amount > 0)
   const expenseList = filtered.filter(t => t.amount < 0)
   const income = incomeList.reduce((s, t) => s + t.amount, 0)
@@ -141,7 +142,7 @@ export default function HomeScreen({ transactions, onToggleUnnecessary, onUpdate
           </div>
         ) : (
           filteredAndSorted.slice(0, 5).map(tx => (
-            <TransactionItem key={tx.id} tx={tx} onToggleUnnecessary={onToggleUnnecessary} onUpdate={onUpdate} />
+            <TransactionItem key={tx.id} tx={tx} onToggleUnnecessary={onToggleUnnecessary} onUpdate={onUpdate} onToggleExcluded={onToggleExcluded} coupleId={coupleId} />
           ))
         )}
       </div>
@@ -175,7 +176,7 @@ export default function HomeScreen({ transactions, onToggleUnnecessary, onUpdate
                 <div style={{ textAlign: 'center', padding: '32px 0', fontSize: 13, color: 'var(--text-secondary)' }}>내역이 없어요</div>
               ) : (
                 modalConfig[modal].list.map(tx => (
-                  <TransactionItem key={tx.id} tx={tx} onToggleUnnecessary={onToggleUnnecessary} onUpdate={onUpdate} />
+                  <TransactionItem key={tx.id} tx={tx} onToggleUnnecessary={onToggleUnnecessary} onUpdate={onUpdate} onToggleExcluded={onToggleExcluded} coupleId={coupleId} />
                 ))
               )}
             </div>

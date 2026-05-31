@@ -1,10 +1,10 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Home, PieChart, Wallet, Settings, Plus } from 'lucide-react'
+import { Home, List, PieChart, Settings, Plus } from 'lucide-react'
 import HomeScreen from './screens/HomeScreen'
+import TransactionScreen from './screens/TransactionScreen'
 import AnalysisScreen from './screens/AnalysisScreen'
-import BudgetScreen from './screens/BudgetScreen'
 import SettingsScreen from './screens/SettingsScreen'
 import AddTransactionModal from './components/AddTransactionModal'
 import ImportModal from './components/ImportModal'
@@ -50,9 +50,7 @@ export default function App() {
   async function loadProfile(userId) {
     const prof = await getProfile(userId)
     setProfile(prof)
-    if (prof?.couple_id) {
-      loadTransactions(prof.couple_id)
-    }
+    if (prof?.couple_id) loadTransactions(prof.couple_id)
   }
 
   async function loadTransactions(coupleId) {
@@ -65,6 +63,13 @@ export default function App() {
     if (!tx) return
     await toggleUnnecessary(id, !tx.unnecessary)
     setTransactions(prev => prev.map(t => t.id === id ? { ...t, unnecessary: !t.unnecessary } : t))
+  }
+
+  async function handleToggleExcluded(id) {
+    const tx = transactions.find(t => t.id === id)
+    if (!tx) return
+    const { error } = await supabase.from('transactions').update({ excluded: !tx.excluded }).eq('id', tx.id)
+    if (!error) setTransactions(prev => prev.map(t => t.id === id ? { ...t, excluded: !t.excluded } : t))
   }
 
   async function handleAddTransaction(tx) {
@@ -102,15 +107,13 @@ export default function App() {
   }
 
   if (!user) return <AuthScreen onAuth={(u) => { setUser(u); loadProfile(u.id) }} />
-
-  if (!profile?.couple_id) {
-    return <CoupleSetup user={user} profile={profile} onComplete={() => loadProfile(user.id)} />
-  }
+  if (!profile?.couple_id) return <CoupleSetup user={user} profile={profile} onComplete={() => loadProfile(user.id)} />
 
   const screens = {
-    home: <HomeScreen transactions={transactions} onToggleUnnecessary={handleToggleUnnecessary} onUpdate={handleUpdateTransaction} />,
+    home: <HomeScreen transactions={transactions} onToggleUnnecessary={handleToggleUnnecessary} onUpdate={handleUpdateTransaction} coupleId={profile.couple_id} onToggleExcluded={handleToggleExcluded} />,
+
+    transactions: <TransactionScreen transactions={transactions} onToggleUnnecessary={handleToggleUnnecessary} onUpdate={handleUpdateTransaction} onToggleExcluded={handleToggleExcluded} coupleId={profile.couple_id} />,
     analysis: <AnalysisScreen transactions={transactions} />,
-    budget: <BudgetScreen transactions={transactions} />,
     settings: <SettingsScreen onImport={() => setShowImport(true)} onSignOut={handleSignOut} user={user} profile={profile} coupleId={profile.couple_id} />,
   }
 
@@ -123,14 +126,14 @@ export default function App() {
         <div className={`nav-item ${activeTab === 'home' ? 'active' : ''}`} onClick={() => setActiveTab('home')}>
           <Home size={22} /><span>홈</span>
         </div>
-        <div className={`nav-item ${activeTab === 'analysis' ? 'active' : ''}`} onClick={() => setActiveTab('analysis')}>
-          <PieChart size={22} /><span>분석</span>
+        <div className={`nav-item ${activeTab === 'transactions' ? 'active' : ''}`} onClick={() => setActiveTab('transactions')}>
+          <List size={22} /><span>내역</span>
         </div>
         <button className="nav-add-btn" onClick={() => setShowAdd(true)}>
           <Plus size={24} />
         </button>
-        <div className={`nav-item ${activeTab === 'budget' ? 'active' : ''}`} onClick={() => setActiveTab('budget')}>
-          <Wallet size={22} /><span>예산</span>
+        <div className={`nav-item ${activeTab === 'analysis' ? 'active' : ''}`} onClick={() => setActiveTab('analysis')}>
+          <PieChart size={22} /><span>분석</span>
         </div>
         <div className={`nav-item ${activeTab === 'settings' ? 'active' : ''}`} onClick={() => setActiveTab('settings')}>
           <Settings size={22} /><span>설정</span>

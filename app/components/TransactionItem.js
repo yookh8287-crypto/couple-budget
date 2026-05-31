@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { formatKRW, formatDate } from '@/lib/data'
 import TransactionDetailModal from './TransactionDetailModal'
 
-export default function TransactionItem({ tx, onToggleUnnecessary, onUpdate }) {
+export default function TransactionItem({ tx, onToggleUnnecessary, onUpdate, onToggleExcluded, coupleId }) {
   const [showDetail, setShowDetail] = useState(false)
   const isIncome = tx.amount > 0
 
@@ -13,6 +13,7 @@ export default function TransactionItem({ tx, onToggleUnnecessary, onUpdate }) {
       <div
         className={`tx-item ${tx.unnecessary ? 'unnecessary' : ''}`}
         onClick={() => setShowDetail(true)}
+        style={{ opacity: tx.excluded ? 0.4 : 1 }}
       >
         <div className="tx-icon-wrap">
           <div className="tx-icon">{tx.icon}</div>
@@ -28,6 +29,7 @@ export default function TransactionItem({ tx, onToggleUnnecessary, onUpdate }) {
             {tx.who === 'w' && <span className="badge badge-w">아내</span>}
             {tx.recurring && <span className="badge badge-rec">정기</span>}
             {tx.unnecessary && <span className="badge badge-bad">불필요</span>}
+            {tx.excluded && <span className="badge" style={{ background: 'var(--bg-tertiary)', color: 'var(--text-tertiary)' }}>제외</span>}
           </div>
           <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
             {tx.category} · {formatDate(tx.date)}
@@ -35,35 +37,32 @@ export default function TransactionItem({ tx, onToggleUnnecessary, onUpdate }) {
           </div>
         </div>
 
-        <div style={{ textAlign: 'right', flexShrink: 0 }}>
+        <div style={{ textAlign: 'right', flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
           <div style={{ fontSize: 14, fontWeight: 600, color: isIncome ? 'var(--green)' : 'var(--text-primary)' }}>
-            {isIncome
-              ? `${Math.abs(tx.amount).toLocaleString()}원`
-              : `-${Math.abs(tx.amount).toLocaleString()}원`
-            }
+            {isIncome ? '' : '-'}{Math.abs(tx.amount).toLocaleString()}원
           </div>
-          {!isIncome && (
-            <div
-              style={{ fontSize: 16, marginTop: 2, opacity: tx.unnecessary ? 1 : 0.3 }}
-              onClick={e => {
-                e.stopPropagation()
-                onToggleUnnecessary && onToggleUnnecessary(tx.id)
-              }}
-            >
-              🚩
+          <div style={{ display: 'flex', gap: 6 }}>
+            {!isIncome && (
+              <div style={{ fontSize: 14, opacity: tx.unnecessary ? 1 : 0.3 }}
+                onClick={e => { e.stopPropagation(); onToggleUnnecessary && onToggleUnnecessary(tx.id) }}>
+                🚩
+              </div>
+            )}
+            <div style={{ fontSize: 14, opacity: tx.excluded ? 1 : 0.3 }}
+              onClick={e => { e.stopPropagation(); onToggleExcluded && onToggleExcluded(tx.id) }}
+              title="가계부에서 제외">
+              🚫
             </div>
-          )}
+          </div>
         </div>
       </div>
 
       {showDetail && (
         <TransactionDetailModal
           tx={tx}
+          coupleId={coupleId}
           onClose={() => setShowDetail(false)}
-          onUpdate={(updated) => {
-            onUpdate && onUpdate(updated)
-            setShowDetail(false)
-          }}
+          onUpdate={(updated) => { onUpdate && onUpdate(updated); setShowDetail(false) }}
         />
       )}
     </>
