@@ -1,60 +1,71 @@
-bash
-
-cat > /mnt/user-data/outputs/couple-budget/app/components/TransactionFilter.js << 'EOF'
 'use client'
 
-export const FILTER_OPTIONS = [
-  { key: 'latest', label: '최신순' },
-  { key: 'oldest', label: '오래된순' },
-  { key: 'amount_high', label: '금액높은순' },
-  { key: 'amount_low', label: '금액낮은순' },
-  { key: 'expense', label: '지출만' },
-  { key: 'income', label: '수입만' },
-]
+import { useState } from 'react'
+import { formatKRW, formatDate } from '@/lib/data'
+import TransactionDetailModal from './TransactionDetailModal'
 
-export function applyFilter(list, filter) {
-  let result = [...list]
-  if (filter === 'expense') result = result.filter(t => t.amount < 0)
-  else if (filter === 'income') result = result.filter(t => t.amount > 0)
+export default function TransactionItem({ tx, onToggleUnnecessary, onUpdate }) {
+  const [showDetail, setShowDetail] = useState(false)
+  const isIncome = tx.amount > 0
 
-  if (filter === 'latest') result.sort((a, b) => new Date(b.date) - new Date(a.date))
-  else if (filter === 'oldest') result.sort((a, b) => new Date(a.date) - new Date(b.date))
-  else if (filter === 'amount_high') result.sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount))
-  else if (filter === 'amount_low') result.sort((a, b) => Math.abs(a.amount) - Math.abs(b.amount))
-  else if (filter === 'expense') result.sort((a, b) => new Date(b.date) - new Date(a.date))
-  else if (filter === 'income') result.sort((a, b) => new Date(b.date) - new Date(a.date))
-
-  return result
-}
-
-export default function TransactionFilter({ value, onChange }) {
   return (
-    <div style={{ display: 'flex', gap: 6, overflowX: 'auto', padding: '8px 16px 4px', scrollbarWidth: 'none' }}>
-      {FILTER_OPTIONS.map(opt => (
-        <button
-          key={opt.key}
-          onClick={() => onChange(opt.key)}
-          style={{
-            flexShrink: 0,
-            padding: '5px 12px',
-            borderRadius: 20,
-            border: '1px solid var(--border)',
-            fontSize: 12,
-            fontWeight: value === opt.key ? 600 : 400,
-            cursor: 'pointer',
-            background: value === opt.key ? 'var(--blue)' : 'var(--bg-primary)',
-            color: value === opt.key ? 'white' : 'var(--text-secondary)',
-            whiteSpace: 'nowrap',
-            transition: 'all 0.15s',
+    <>
+      <div
+        className={`tx-item ${tx.unnecessary ? 'unnecessary' : ''}`}
+        onClick={() => setShowDetail(true)}
+      >
+        <div className="tx-icon-wrap">
+          <div className="tx-icon">{tx.icon}</div>
+          {tx.recurring && <div className="recurring-dot" title="정기 결제" />}
+        </div>
+
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 3 }}>
+            <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {tx.name}
+            </span>
+            {tx.who === 'h' && <span className="badge badge-h">남편</span>}
+            {tx.who === 'w' && <span className="badge badge-w">아내</span>}
+            {tx.recurring && <span className="badge badge-rec">정기</span>}
+            {tx.unnecessary && <span className="badge badge-bad">불필요</span>}
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+            {tx.category} · {formatDate(tx.date)}
+            {tx.memo && <span style={{ marginLeft: 4, color: 'var(--text-tertiary)' }}>· {tx.memo}</span>}
+          </div>
+        </div>
+
+        <div style={{ textAlign: 'right', flexShrink: 0 }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: isIncome ? 'var(--green)' : 'var(--text-primary)' }}>
+            {isIncome
+              ? `${Math.abs(tx.amount).toLocaleString()}원`
+              : `-${Math.abs(tx.amount).toLocaleString()}원`
+            }
+          </div>
+          {!isIncome && (
+            <div
+              style={{ fontSize: 16, marginTop: 2, opacity: tx.unnecessary ? 1 : 0.3 }}
+              onClick={e => {
+                e.stopPropagation()
+                onToggleUnnecessary && onToggleUnnecessary(tx.id)
+              }}
+            >
+              🚩
+            </div>
+          )}
+        </div>
+      </div>
+
+      {showDetail && (
+        <TransactionDetailModal
+          tx={tx}
+          onClose={() => setShowDetail(false)}
+          onUpdate={(updated) => {
+            onUpdate && onUpdate(updated)
+            setShowDetail(false)
           }}
-        >
-          {opt.label}
-        </button>
-      ))}
-    </div>
+        />
+      )}
+    </>
   )
 }
-EOF
-출력
-
-exit code 0

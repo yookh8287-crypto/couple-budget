@@ -185,8 +185,8 @@ export default function HomeScreen({ transactions, onToggleUnnecessary, onUpdate
                 </span>
               </div>
             </div>
-            <TransactionFilter value={modalFilter} onChange={setModalFilter} />
             <div style={{ overflowY: 'auto', flex: 1, paddingBottom: 20 }}>
+            <TransactionFilter value={modalFilter} onChange={setModalFilter} />
               {modalConfig[modal].list.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '32px 0', fontSize: 13, color: 'var(--text-secondary)' }}>내역이 없어요</div>
               ) : (
