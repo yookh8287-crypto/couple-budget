@@ -1,7 +1,8 @@
 'use client'
 
-import { useState } from 'react'
-import { Bell, Link, ChevronRight, Users, Download, Pencil, Check, X, Tag, LogOut } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Bell, Link, ChevronRight, Users, Download, Pencil, Check, X, Tag, LogOut, Moon, Sun, Wallet } from 'lucide-react'
+import { supabase } from '@/lib/data'
 
 const DEFAULT_EXPENSE_CATS = [
   { name: '식비', icon: '🛒' }, { name: '외식', icon: '🍽️' }, { name: '카페', icon: '☕' },
@@ -16,7 +17,15 @@ const DEFAULT_INCOME_CATS = [
   { name: '용돈', icon: '💵' }, { name: '환급', icon: '↩️' }, { name: '기타수입', icon: '💸' },
 ]
 
-export default function SettingsScreen({ onImport, onSignOut, user, profile }) {
+const DEFAULT_BUDGETS = [
+  { category: '식비', icon: '🛒', budget: 500000 },
+  { category: '외식', icon: '🍽️', budget: 200000 },
+  { category: '교통', icon: '⛽', budget: 300000 },
+  { category: '구독', icon: '📺', budget: 100000 },
+  { category: '건강', icon: '🏋️', budget: 200000 },
+]
+
+export default function SettingsScreen({ onImport, onSignOut, user, profile, coupleId }) {
   const [alerts, setAlerts] = useState({ budgetOver: true, recurring: true, monthlyReport: true })
   const [expenseCats, setExpenseCats] = useState(DEFAULT_EXPENSE_CATS)
   const [incomeCats, setIncomeCats] = useState(DEFAULT_INCOME_CATS)
@@ -24,6 +33,40 @@ export default function SettingsScreen({ onImport, onSignOut, user, profile }) {
   const [catType, setCatType] = useState('expense')
   const [editingCat, setEditingCat] = useState(null)
   const [showCatEdit, setShowCatEdit] = useState(false)
+  const [darkMode, setDarkMode] = useState(false)
+  const [showBudget, setShowBudget] = useState(false)
+  const [budgets, setBudgets] = useState(DEFAULT_BUDGETS)
+  const [editingBudget, setEditingBudget] = useState(null)
+  const [showBudgetEdit, setShowBudgetEdit] = useState(false)
+
+  useEffect(() => {
+    const theme = localStorage.getItem('theme')
+    setDarkMode(theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches))
+    if (coupleId) loadBudgets()
+  }, [coupleId])
+
+  async function loadBudgets() {
+    const { data } = await supabase.from('budgets').select('*').eq('couple_id', coupleId)
+    if (data && data.length > 0) setBudgets(data)
+  }
+
+  function toggleDarkMode() {
+    const next = !darkMode
+    setDarkMode(next)
+    localStorage.setItem('theme', next ? 'dark' : 'light')
+    document.documentElement.setAttribute('data-theme', next ? 'dark' : 'light')
+  }
+
+  async function saveBudget(cat, amount) {
+    const existing = budgets.find(b => b.category === cat.category)
+    if (existing?.id) {
+      await supabase.from('budgets').update({ budget: amount }).eq('id', existing.id)
+    } else {
+      await supabase.from('budgets').insert([{ category: cat.category, icon: cat.icon, budget: amount, couple_id: coupleId }])
+    }
+    setBudgets(prev => prev.map(b => b.category === cat.category ? { ...b, budget: amount } : b))
+    setShowBudgetEdit(false)
+  }
 
   function startEdit(type, index) {
     const cat = type === 'expense' ? expenseCats[index] : incomeCats[index]
@@ -39,7 +82,6 @@ export default function SettingsScreen({ onImport, onSignOut, user, profile }) {
       setIncomeCats(prev => prev.map((c, i) => i === editingCat.index ? { name: editingCat.name, icon: editingCat.icon } : c))
     }
     setShowCatEdit(false)
-    setEditingCat(null)
   }
 
   function Toggle({ value, onChange }) {
@@ -64,26 +106,42 @@ export default function SettingsScreen({ onImport, onSignOut, user, profile }) {
       {/* 내 프로필 */}
       <div className="card" style={{ marginTop: 14 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{
-            width: 48, height: 48, borderRadius: '50%',
-            background: profile?.role === 'h' ? '#ebf3fe' : '#fce8f3',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 20,
-          }}>
+          <div style={{ width: 48, height: 48, borderRadius: '50%', background: profile?.role === 'h' ? 'var(--blue-light)' : '#fce8f3', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>
             {profile?.role === 'h' ? '👨' : '👩'}
           </div>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 16, fontWeight: 700 }}>{profile?.nickname || '사용자'}</div>
             <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>{user?.email}</div>
           </div>
-          <button onClick={onSignOut} style={{
-            display: 'flex', alignItems: 'center', gap: 4, padding: '8px 12px',
-            borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)',
-            background: 'none', fontSize: 13, color: 'var(--text-secondary)', cursor: 'pointer',
-          }}>
+          <button onClick={onSignOut} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '8px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'none', fontSize: 13, color: 'var(--text-secondary)', cursor: 'pointer' }}>
             <LogOut size={14} /> 로그아웃
           </button>
         </div>
+      </div>
+
+      {/* 화면 설정 */}
+      <div className="card" style={{ marginTop: 10 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {darkMode ? <Moon size={18} color="var(--blue)" /> : <Sun size={18} color="var(--blue)" />}
+            <span style={{ fontSize: 14, fontWeight: 700 }}>다크 모드</span>
+          </div>
+          <Toggle value={darkMode} onChange={toggleDarkMode} />
+        </div>
+      </div>
+
+      {/* 예산 설정 */}
+      <div className="card" style={{ marginTop: 10 }}>
+        <button onClick={() => setShowBudget(true)} style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Wallet size={18} color="var(--blue)" />
+            <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>예산 설정</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{budgets.length}개 카테고리</span>
+            <ChevronRight size={16} color="var(--text-tertiary)" />
+          </div>
+        </button>
       </div>
 
       {/* 데이터 가져오기 */}
@@ -92,11 +150,7 @@ export default function SettingsScreen({ onImport, onSignOut, user, profile }) {
           <Download size={18} color="var(--blue)" />
           <span style={{ fontSize: 14, fontWeight: 700 }}>데이터 가져오기</span>
         </div>
-        <button onClick={onImport} style={{
-          width: '100%', padding: '14px', borderRadius: 'var(--radius-md)',
-          border: '1px solid var(--border)', background: 'var(--bg-secondary)',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer',
-        }}>
+        <button onClick={onImport} style={{ width: '100%', padding: '14px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)', background: 'var(--bg-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <span style={{ fontSize: 22 }}>🏦</span>
             <div style={{ textAlign: 'left' }}>
@@ -110,10 +164,7 @@ export default function SettingsScreen({ onImport, onSignOut, user, profile }) {
 
       {/* 카테고리 관리 */}
       <div className="card" style={{ marginTop: 10 }}>
-        <button onClick={() => setShowCatList(true)} style={{
-          width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          background: 'none', border: 'none', cursor: 'pointer', padding: 0,
-        }}>
+        <button onClick={() => setShowCatList(true)} style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <Tag size={18} color="var(--blue)" />
             <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>카테고리 관리</span>
@@ -136,19 +187,62 @@ export default function SettingsScreen({ onImport, onSignOut, user, profile }) {
           { key: 'recurring', label: '정기 결제 알림' },
           { key: 'monthlyReport', label: '월간 리포트' },
         ].map(({ key, label }, i, arr) => (
-          <div key={key} style={{
-            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            padding: '13px 0', borderBottom: i < arr.length - 1 ? '1px solid var(--border)' : 'none',
-          }}>
+          <div key={key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '13px 0', borderBottom: i < arr.length - 1 ? '1px solid var(--border)' : 'none' }}>
             <span style={{ fontSize: 14 }}>{label}</span>
             <Toggle value={alerts[key]} onChange={() => setAlerts(a => ({ ...a, [key]: !a[key] }))} />
           </div>
         ))}
       </div>
 
-      <div style={{ textAlign: 'center', marginTop: 20, fontSize: 12, color: 'var(--text-tertiary)' }}>
-        우리 가계부 v0.1.0
-      </div>
+      <div style={{ textAlign: 'center', marginTop: 20, fontSize: 12, color: 'var(--text-tertiary)' }}>우리 가계부 v0.1.0</div>
+
+      {/* 예산 설정 모달 */}
+      {showBudget && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 50, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }} onClick={() => setShowBudget(false)}>
+          <div style={{ background: 'var(--bg-primary)', borderRadius: '20px 20px 0 0', width: '100%', maxWidth: 430, maxHeight: '85vh', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
+            <div style={{ padding: '20px 20px 12px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: 16, fontWeight: 700 }}>예산 설정</span>
+              <button onClick={() => setShowBudget(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}><X size={22} /></button>
+            </div>
+            <div style={{ overflowY: 'auto', flex: 1, padding: '8px 16px 20px' }}>
+              {budgets.map((b, i) => (
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 14px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', marginTop: 8 }}>
+                  <span style={{ fontSize: 15 }}>{b.icon} {b.category}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{b.budget?.toLocaleString()}원</span>
+                    <button onClick={() => { setEditingBudget({ ...b, newAmount: String(b.budget) }); setShowBudgetEdit(true) }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--blue)', fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <Pencil size={13} /> 수정
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 예산 수정 모달 */}
+      {showBudgetEdit && editingBudget && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 60, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }} onClick={() => setShowBudgetEdit(false)}>
+          <div style={{ background: 'var(--bg-primary)', borderRadius: '20px 20px 0 0', padding: '24px 20px 40px', width: '100%', maxWidth: 430 }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <span style={{ fontSize: 17, fontWeight: 700 }}>{editingBudget.icon} {editingBudget.category} 예산</span>
+              <button onClick={() => setShowBudgetEdit(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}><X size={22} /></button>
+            </div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>월 예산 금액</div>
+            <input
+              type="number"
+              value={editingBudget.newAmount}
+              onChange={e => setEditingBudget(prev => ({ ...prev, newAmount: e.target.value }))}
+              placeholder="0"
+              style={{ width: '100%', padding: '14px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', fontSize: 20, fontWeight: 700, outline: 'none', background: 'var(--bg-primary)', color: 'var(--text-primary)', marginBottom: 20 }}
+            />
+            <button onClick={() => saveBudget(editingBudget, parseInt(editingBudget.newAmount) || 0)} style={{ width: '100%', padding: '16px', borderRadius: 'var(--radius-md)', background: 'var(--blue)', color: 'white', border: 'none', fontSize: 16, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+              <Check size={18} /> 저장하기
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* 카테고리 목록 모달 */}
       {showCatList && (
@@ -161,12 +255,7 @@ export default function SettingsScreen({ onImport, onSignOut, user, profile }) {
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
                 {['expense', 'income'].map(type => (
-                  <button key={type} onClick={() => setCatType(type)} style={{
-                    flex: 1, padding: '8px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)',
-                    fontSize: 13, fontWeight: 500, cursor: 'pointer',
-                    background: catType === type ? 'var(--blue)' : 'var(--bg-primary)',
-                    color: catType === type ? 'white' : 'var(--text-secondary)',
-                  }}>
+                  <button key={type} onClick={() => setCatType(type)} style={{ flex: 1, padding: '8px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', fontSize: 13, fontWeight: 500, cursor: 'pointer', background: catType === type ? 'var(--blue)' : 'var(--bg-primary)', color: catType === type ? 'white' : 'var(--text-secondary)' }}>
                     {type === 'expense' ? '지출' : '수입'}
                   </button>
                 ))}
@@ -197,24 +286,18 @@ export default function SettingsScreen({ onImport, onSignOut, user, profile }) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div>
                 <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>아이콘 (이모지 입력)</div>
-                <input value={editingCat.icon} onChange={e => setEditingCat(prev => ({ ...prev, icon: e.target.value }))} placeholder="예: 🛒"
-                  style={{ width: '100%', padding: '12px 14px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', fontSize: 24, outline: 'none', background: 'var(--bg-primary)' }} />
+                <input value={editingCat.icon} onChange={e => setEditingCat(prev => ({ ...prev, icon: e.target.value }))} style={{ width: '100%', padding: '12px 14px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', fontSize: 24, outline: 'none', background: 'var(--bg-primary)' }} />
               </div>
               <div>
                 <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>카테고리 이름</div>
-                <input value={editingCat.name} onChange={e => setEditingCat(prev => ({ ...prev, name: e.target.value }))} placeholder="카테고리 이름"
-                  style={{ width: '100%', padding: '12px 14px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', fontSize: 14, outline: 'none', background: 'var(--bg-primary)', color: 'var(--text-primary)' }} />
+                <input value={editingCat.name} onChange={e => setEditingCat(prev => ({ ...prev, name: e.target.value }))} style={{ width: '100%', padding: '12px 14px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', fontSize: 14, outline: 'none', background: 'var(--bg-primary)', color: 'var(--text-primary)' }} />
               </div>
               <div style={{ padding: '12px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', textAlign: 'center' }}>
                 <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>미리보기: </span>
                 <span style={{ fontSize: 15, fontWeight: 600 }}>{editingCat.icon} {editingCat.name}</span>
               </div>
             </div>
-            <button onClick={saveEdit} style={{
-              width: '100%', marginTop: 20, padding: '16px', borderRadius: 'var(--radius-md)',
-              background: 'var(--blue)', color: 'white', border: 'none', fontSize: 16, fontWeight: 700, cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-            }}>
+            <button onClick={saveEdit} style={{ width: '100%', marginTop: 20, padding: '16px', borderRadius: 'var(--radius-md)', background: 'var(--blue)', color: 'white', border: 'none', fontSize: 16, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
               <Check size={18} /> 저장하기
             </button>
           </div>
