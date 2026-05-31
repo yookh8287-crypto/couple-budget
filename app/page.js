@@ -51,12 +51,12 @@ export default function App() {
     const prof = await getProfile(userId)
     setProfile(prof)
     if (prof?.couple_id) {
-      loadTransactions()
+      loadTransactions(prof.couple_id)
     }
   }
 
-  async function loadTransactions() {
-    const data = await getTransactions()
+  async function loadTransactions(coupleId) {
+    const data = await getTransactions(coupleId)
     setTransactions(data)
   }
 
@@ -68,7 +68,7 @@ export default function App() {
   }
 
   async function handleAddTransaction(tx) {
-    const newTx = await addTransaction(tx)
+    const newTx = await addTransaction(tx, profile.couple_id)
     if (newTx) setTransactions(prev => [newTx, ...prev])
     setShowAdd(false)
   }
@@ -78,9 +78,10 @@ export default function App() {
   }
 
   async function handleImport(txList) {
-    const { error } = await supabase.from('transactions').insert(txList)
+    const txWithCouple = txList.map(tx => ({ ...tx, couple_id: profile.couple_id }))
+    const { error } = await supabase.from('transactions').insert(txWithCouple)
     if (error) { alert('가져오기 중 오류가 발생했어요.'); return }
-    await loadTransactions()
+    await loadTransactions(profile.couple_id)
   }
 
   async function handleSignOut() {
@@ -91,7 +92,6 @@ export default function App() {
     window.location.reload()
   }
 
-  // 로딩
   if (loading) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', flexDirection: 'column', gap: 12, background: 'var(--bg-tertiary)' }}>
@@ -101,10 +101,8 @@ export default function App() {
     )
   }
 
-  // 비로그인
   if (!user) return <AuthScreen onAuth={(u) => { setUser(u); loadProfile(u.id) }} />
 
-  // 커플 미연결
   if (!profile?.couple_id) {
     return <CoupleSetup user={user} profile={profile} onComplete={() => loadProfile(user.id)} />
   }
