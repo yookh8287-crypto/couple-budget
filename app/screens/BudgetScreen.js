@@ -4,21 +4,39 @@ import { useState, useEffect } from 'react'
 import { getCategoryTotals, formatKRW, getBudgets } from '@/lib/data'
 import { AlertTriangle } from 'lucide-react'
 
-export default function BudgetScreen({ transactions }) {
+const MONTHS = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월']
+
+export default function BudgetScreen({ transactions, coupleId }) {
   const [budgets, setBudgets] = useState([])
+  const [monthIdx, setMonthIdx] = useState(new Date().getMonth())
+  const [year, setYear] = useState(new Date().getFullYear())
 
   useEffect(() => {
-    getBudgets().then(setBudgets)
-  }, [])
+    if (coupleId) getBudgets(coupleId).then(setBudgets)
+  }, [coupleId])
 
-  const expenses = transactions.filter(t => t.amount < 0)
-  const income = transactions.filter(t => t.amount > 0).reduce((s, t) => s + t.amount, 0)
+  function changeMonth(d) {
+    let m = monthIdx + d
+    let y = year
+    if (m < 0) { m = 11; y-- }
+    if (m > 11) { m = 0; y++ }
+    setMonthIdx(m)
+    setYear(y)
+  }
+
+  const monthFiltered = transactions.filter(t => {
+    const d = new Date(t.date)
+    return d.getFullYear() === year && d.getMonth() === monthIdx
+  })
+
+  const expenses = monthFiltered.filter(t => t.amount < 0)
+  const income = monthFiltered.filter(t => t.amount > 0).reduce((s, t) => s + t.amount, 0)
   const totalExpense = expenses.reduce((s, t) => s + Math.abs(t.amount), 0)
   const unnecessaryTotal = expenses.filter(t => t.unnecessary).reduce((s, t) => s + Math.abs(t.amount), 0)
-  const categoryTotals = getCategoryTotals(transactions)
+  const categoryTotals = getCategoryTotals(monthFiltered)
 
   const expensePct = income > 0 ? Math.round((totalExpense / income) * 100) : 0
-  const savingPct = 100 - expensePct
+  const savingPct = Math.max(0, 100 - expensePct)
   const wastePct = income > 0 ? Math.round((unnecessaryTotal / income) * 100) : 0
 
   const overBudget = budgets.filter(b => {
@@ -29,7 +47,14 @@ export default function BudgetScreen({ transactions }) {
   return (
     <div style={{ paddingBottom: 90 }}>
       <div className="topbar">
-        <span style={{ fontSize: 18, fontWeight: 700 }}>예산 관리</span>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: 18, fontWeight: 700 }}>예산 관리</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <button onClick={() => changeMonth(-1)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: 'var(--text-secondary)', padding: '2px 6px' }}>‹</button>
+            <span style={{ fontSize: 13, fontWeight: 600, minWidth: 72, textAlign: 'center' }}>{year}년 {MONTHS[monthIdx]}</span>
+            <button onClick={() => changeMonth(1)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: 'var(--text-secondary)', padding: '2px 6px' }}>›</button>
+          </div>
+        </div>
       </div>
 
       <div className="card" style={{ marginTop: 12 }}>
@@ -53,16 +78,14 @@ export default function BudgetScreen({ transactions }) {
           <span>지출 {formatKRW(totalExpense)}</span>
         </div>
         <div className="progress-bar" style={{ height: 10, borderRadius: 5 }}>
-          <div className="progress-fill fill-red" style={{ width: `${expensePct}%`, height: 10, borderRadius: 5 }} />
+          <div className="progress-fill fill-red" style={{ width: `${Math.min(expensePct, 100)}%`, height: 10, borderRadius: 5 }} />
         </div>
       </div>
 
       {overBudget.map(b => (
         <div key={b.category} className="alert-box alert-danger" style={{ marginTop: 10 }}>
           <AlertTriangle size={18} />
-          <span style={{ fontSize: 13, fontWeight: 500 }}>
-            {b.icon} {b.category} 예산이 초과됐어요!
-          </span>
+          <span style={{ fontSize: 13, fontWeight: 500 }}>{b.icon} {b.category} 예산이 초과됐어요!</span>
         </div>
       ))}
 

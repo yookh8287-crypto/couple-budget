@@ -110,7 +110,7 @@ export default function App() {
   const screens = {
     home: <HomeScreen transactions={transactions} onToggleUnnecessary={handleToggleUnnecessary} onUpdate={handleUpdateTransaction} />,
     analysis: <AnalysisScreen transactions={transactions} />,
-    budget: <BudgetScreen transactions={transactions} />,
+    budget: <BudgetScreen transactions={transactions} coupleId={profile.couple_id} />,
     settings: <SettingsScreen onImport={() => setShowImport(true)} onSignOut={handleSignOut} user={user} profile={profile} />,
   }
 

@@ -8,7 +8,7 @@ import { X } from 'lucide-react'
 
 const MONTHS = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월']
 
-export default function HomeScreen({ transactions, onToggleUnnecessary, onUpdate }) {
+export default function HomeScreen({ transactions, onToggleUnnecessary, onUpdate, coupleId }) {
   const [member, setMember] = useState('all')
   const [monthIdx, setMonthIdx] = useState(new Date().getMonth())
   const [year, setYear] = useState(new Date().getFullYear())
@@ -18,8 +18,8 @@ export default function HomeScreen({ transactions, onToggleUnnecessary, onUpdate
   const [modalFilter, setModalFilter] = useState('latest')
 
   useEffect(() => {
-    getSavings().then(setSavings)
-  }, [])
+    if (coupleId) getSavings(coupleId).then(setSavings)
+  }, [coupleId])
 
   function changeMonth(d) {
     let m = monthIdx + d
@@ -35,7 +35,13 @@ export default function HomeScreen({ transactions, onToggleUnnecessary, onUpdate
     setModalFilter('latest')
   }
 
-  const filtered = filterByMember(transactions, member)
+  // 선택한 월에 해당하는 데이터만 필터링
+  const monthFiltered = transactions.filter(t => {
+    const d = new Date(t.date)
+    return d.getFullYear() === year && d.getMonth() === monthIdx
+  })
+
+  const filtered = filterByMember(monthFiltered, member)
   const incomeList = filtered.filter(t => t.amount > 0)
   const expenseList = filtered.filter(t => t.amount < 0)
   const income = incomeList.reduce((s, t) => s + t.amount, 0)
@@ -47,26 +53,9 @@ export default function HomeScreen({ transactions, onToggleUnnecessary, onUpdate
   const filteredAndSorted = applyFilter(filtered, filter)
 
   const modalConfig = {
-    income: {
-      title: '수입 내역',
-      list: applyFilter(incomeList, modalFilter),
-      summary: formatKRW(income),
-      summaryColor: 'var(--green)',
-      count: incomeList.length,
-    },
-    expense: {
-      title: '지출 내역',
-      list: applyFilter(expenseList, modalFilter),
-      summary: `-${formatKRW(expense)}`,
-      summaryColor: 'var(--text-primary)',
-      count: expenseList.length,
-    },
-    all: {
-      title: '전체 거래 내역',
-      list: applyFilter(filtered, modalFilter),
-      summary: null,
-      count: filtered.length,
-    },
+    income: { title: '수입 내역', list: applyFilter(incomeList, modalFilter), summary: formatKRW(income), summaryColor: 'var(--green)', count: incomeList.length },
+    expense: { title: '지출 내역', list: applyFilter(expenseList, modalFilter), summary: `-${formatKRW(expense)}`, summaryColor: 'var(--text-primary)', count: expenseList.length },
+    all: { title: '전체 거래 내역', list: applyFilter(filtered, modalFilter), summary: null, count: filtered.length },
   }
 
   return (
@@ -91,7 +80,7 @@ export default function HomeScreen({ transactions, onToggleUnnecessary, onUpdate
       </div>
 
       <div className="card" style={{ marginTop: 12 }}>
-        <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4 }}>이번 달 총 지출</div>
+        <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4 }}>{year}년 {MONTHS[monthIdx]} 총 지출</div>
         <div style={{ fontSize: 28, fontWeight: 700, marginBottom: 14 }}>-{formatKRW(expense)}</div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
           <div className="stat-box" onClick={() => openModal('income')} style={{ cursor: 'pointer' }}>
@@ -147,7 +136,7 @@ export default function HomeScreen({ transactions, onToggleUnnecessary, onUpdate
       <div style={{ background: 'var(--bg-primary)', borderRadius: 'var(--radius-lg)', margin: '4px 16px 0', overflow: 'hidden', border: '1px solid var(--border)' }}>
         {filteredAndSorted.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '32px 0', fontSize: 13, color: 'var(--text-secondary)' }}>
-            아직 거래 내역이 없어요<br />
+            {year}년 {MONTHS[monthIdx]} 거래 내역이 없어요<br />
             <span style={{ fontSize: 12 }}>+ 버튼으로 추가해보세요</span>
           </div>
         ) : (
@@ -158,15 +147,8 @@ export default function HomeScreen({ transactions, onToggleUnnecessary, onUpdate
       </div>
 
       {modal && (
-        <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
-          zIndex: 50, display: 'flex', alignItems: 'flex-end', justifyContent: 'center'
-        }} onClick={() => setModal(null)}>
-          <div style={{
-            background: 'var(--bg-primary)', borderRadius: '20px 20px 0 0',
-            width: '100%', maxWidth: 430, maxHeight: '85vh',
-            display: 'flex', flexDirection: 'column',
-          }} onClick={e => e.stopPropagation()}>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 50, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }} onClick={() => setModal(null)}>
+          <div style={{ background: 'var(--bg-primary)', borderRadius: '20px 20px 0 0', width: '100%', maxWidth: 430, maxHeight: '85vh', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
             <div style={{ padding: '20px 20px 8px', borderBottom: '1px solid var(--border)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
                 <span style={{ fontSize: 16, fontWeight: 700 }}>{modalConfig[modal].title}</span>
@@ -185,8 +167,10 @@ export default function HomeScreen({ transactions, onToggleUnnecessary, onUpdate
                 </span>
               </div>
             </div>
+            <div style={{ padding: '0 0 4px' }}>
+              <TransactionFilter value={modalFilter} onChange={setModalFilter} />
+            </div>
             <div style={{ overflowY: 'auto', flex: 1, paddingBottom: 20 }}>
-            <TransactionFilter value={modalFilter} onChange={setModalFilter} />
               {modalConfig[modal].list.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '32px 0', fontSize: 13, color: 'var(--text-secondary)' }}>내역이 없어요</div>
               ) : (
