@@ -65,6 +65,13 @@ export default function App() {
     setTransactions(prev => prev.map(t => t.id === id ? { ...t, unnecessary: !t.unnecessary } : t))
   }
 
+  async function handleToggleHidden(id) {
+    const tx = transactions.find(t => t.id === id)
+    if (!tx) return
+    const { error } = await supabase.from('transactions').update({ hidden: !tx.hidden }).eq('id', tx.id)
+    if (!error) setTransactions(prev => prev.map(t => t.id === id ? { ...t, hidden: !t.hidden } : t))
+  }
+
   async function handleToggleExcluded(id) {
     const tx = transactions.find(t => t.id === id)
     if (!tx) return
@@ -110,9 +117,9 @@ export default function App() {
   if (!profile?.couple_id) return <CoupleSetup user={user} profile={profile} onComplete={() => loadProfile(user.id)} />
 
   const screens = {
-    home: <HomeScreen transactions={transactions} onToggleUnnecessary={handleToggleUnnecessary} onUpdate={handleUpdateTransaction} coupleId={profile.couple_id} onToggleExcluded={handleToggleExcluded} />,
+    home: <HomeScreen transactions={transactions} onToggleUnnecessary={handleToggleUnnecessary} onUpdate={handleUpdateTransaction} coupleId={profile.couple_id} onToggleExcluded={handleToggleExcluded} onToggleHidden={handleToggleHidden} />,
 
-    transactions: <TransactionScreen transactions={transactions} onToggleUnnecessary={handleToggleUnnecessary} onUpdate={handleUpdateTransaction} onToggleExcluded={handleToggleExcluded} coupleId={profile.couple_id} />,
+    transactions: <TransactionScreen transactions={transactions} onToggleUnnecessary={handleToggleUnnecessary} onUpdate={handleUpdateTransaction} onToggleExcluded={handleToggleExcluded} onToggleHidden={handleToggleHidden} coupleId={profile.couple_id} />,
     analysis: <AnalysisScreen transactions={transactions} />,
     settings: <SettingsScreen onImport={() => setShowImport(true)} onSignOut={handleSignOut} user={user} profile={profile} coupleId={profile.couple_id} />,
   }
@@ -121,7 +128,7 @@ export default function App() {
     <div className="app-shell">
       {screens[activeTab]}
       {showAdd && <AddTransactionModal onClose={() => setShowAdd(false)} onAdd={handleAddTransaction} />}
-      {showImport && <ImportModal onClose={() => setShowImport(false)} onImport={handleImport} />}
+      {showImport && <ImportModal onClose={() => setShowImport(false)} onImport={handleImport} coupleId={profile.couple_id} />}
       <div className="bottom-nav">
         <div className={`nav-item ${activeTab === 'home' ? 'active' : ''}`} onClick={() => setActiveTab('home')}>
           <Home size={22} /><span>홈</span>

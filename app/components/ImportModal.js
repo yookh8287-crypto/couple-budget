@@ -1,232 +1,440 @@
 'use client'
 
-import { useState } from 'react'
-import { X, Upload, CheckCircle } from 'lucide-react'
-import * as XLSX from 'xlsx'
+import { useState, useEffect } from 'react'
+import { Bell, Link, ChevronRight, Users, Download, Pencil, Check, X, Tag, LogOut, Moon, Sun, Wallet, Plus, Trash2 } from 'lucide-react'
+import FixedExpenseModal from '../components/FixedExpenseModal'
+import { supabase } from '@/lib/data'
 
-const CATEGORY_MAP = {
-  '식비': '식비',
-  '외식': '외식',
-  '카페': '카페',
-  '술/유흥': '외식',
-  '교통': '교통',
-  '자동차': '교통',
-  '주거/통신': '주거',
-  '통신': '주거',
-  '온라인쇼핑': '쇼핑',
-  '쇼핑': '쇼핑',
-  '의류/미용': '쇼핑',
-  '금융': '금융',
-  '보험': '금융',
-  '의료/건강': '건강',
-  '건강': '건강',
-  '문화/여가': '여가',
-  '여행/숙박': '여가',
-  '교육': '교육',
-  '기타수입': '수입',
-  '용돈': '수입',
-  '급여': '수입',
+const DEFAULT_EXPENSE_CATS = [
+  { name: '식비', icon: '🛒', type: 'expense' }, { name: '외식', icon: '🍽️', type: 'expense' },
+  { name: '카페', icon: '☕', type: 'expense' }, { name: '교통', icon: '⛽', type: 'expense' },
+  { name: '주거', icon: '🏠', type: 'expense' }, { name: '구독', icon: '📺', type: 'expense' },
+  { name: '건강', icon: '🏋️', type: 'expense' }, { name: '의료', icon: '🏥', type: 'expense' },
+  { name: '여가', icon: '🎮', type: 'expense' }, { name: '쇼핑', icon: '🛍️', type: 'expense' },
+  { name: '교육', icon: '📚', type: 'expense' }, { name: '금융', icon: '💳', type: 'expense' },
+  { name: '기타', icon: '💳', type: 'expense' },
+]
+
+const DEFAULT_INCOME_CATS = [
+  { name: '급여', icon: '💰', type: 'income' }, { name: '상여금', icon: '🎁', type: 'income' },
+  { name: '이자', icon: '🏦', type: 'income' }, { name: '용돈', icon: '💵', type: 'income' },
+  { name: '환급', icon: '↩️', type: 'income' }, { name: '기타수입', icon: '💸', type: 'income' },
+]
+
+const DEFAULT_BUDGETS = [
+  { category: '식비', icon: '🛒', budget: 500000 },
+  { category: '외식', icon: '🍽️', budget: 200000 },
+  { category: '교통', icon: '⛽', budget: 300000 },
+  { category: '구독', icon: '📺', budget: 100000 },
+  { category: '건강', icon: '🏋️', budget: 200000 },
+]
+
+function formatDateTimeKR(isoStr) {
+  if (!isoStr) return null
+  const d = new Date(isoStr)
+  return `${d.getFullYear()}년 ${d.getMonth()+1}월 ${d.getDate()}일 ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`
 }
 
-const ICON_MAP = {
-  '식비': '🛒',
-  '외식': '🍽️',
-  '카페': '☕',
-  '교통': '⛽',
-  '주거': '🏠',
-  '쇼핑': '🛍️',
-  '금융': '💳',
-  '건강': '🏥',
-  '여가': '🎮',
-  '교육': '📚',
-  '수입': '💰',
-  '기타': '💳',
-}
+export default function SettingsScreen({ onImport, onSignOut, user, profile, coupleId }) {
+  const [alerts, setAlerts] = useState({ budgetOver: true, recurring: true, monthlyReport: true })
+  const [expenseCats, setExpenseCats] = useState(DEFAULT_EXPENSE_CATS)
+  const [incomeCats, setIncomeCats] = useState(DEFAULT_INCOME_CATS)
+  const [showCatList, setShowCatList] = useState(false)
+  const [catType, setCatType] = useState('expense')
+  const [editingCat, setEditingCat] = useState(null)
+  const [showCatEdit, setShowCatEdit] = useState(false)
+  const [darkMode, setDarkMode] = useState(false)
+  const [showBudget, setShowBudget] = useState(false)
+  const [budgets, setBudgets] = useState(DEFAULT_BUDGETS)
+  const [editingBudget, setEditingBudget] = useState(null)
+  const [showBudgetEdit, setShowBudgetEdit] = useState(false)
+  const [showFixed, setShowFixed] = useState(false)
+  const [coupleCode, setCoupleCode] = useState('')
+  const [partnerProfile, setPartnerProfile] = useState(null)
+  const [catLoading, setCatLoading] = useState(false)
+  const [lastImportAt, setLastImportAt] = useState(null)
+  const [lastImportDate, setLastImportDate] = useState(null)
 
-export default function ImportModal({ onClose, onImport }) {
-  const [step, setStep] = useState('upload')
-  const [preview, setPreview] = useState([])
-  const [who, setWho] = useState('h')
-  const [loading, setLoading] = useState(false)
-
-  function handleFile(e) {
-    const file = e.target.files[0]
-    if (!file) return
-    setLoading(true)
-
-    const reader = new FileReader()
-    reader.onload = (evt) => {
-      try {
-        const wb = XLSX.read(evt.target.result, { type: 'binary', cellDates: true })
-        const sheet = wb.Sheets[wb.SheetNames[1]]
-        const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 })
-
-        const parsed = []
-        for (let i = 1; i < rows.length; i++) {
-          const row = rows[i]
-          if (!row || row.length < 7) continue
-
-          const dateRaw = row[0]
-          const type = row[2]
-          const bigCat = row[3]
-          const name = row[5]
-          const amount = row[6]
-
-          if (!name || !amount || !type) continue
-          if (String(type) !== '지출' && String(type) !== '수입') continue
-
-          let dateStr = ''
-          if (dateRaw instanceof Date) {
-            dateStr = dateRaw.toISOString().split('T')[0]
-          } else if (typeof dateRaw === 'string') {
-            dateStr = dateRaw.split(' ')[0]
-          } else {
-            continue
-          }
-
-          const cat = CATEGORY_MAP[bigCat] || '기타'
-          const icon = ICON_MAP[cat] || '💳'
-          const amt = Number(amount)
-
-          parsed.push({
-            name: String(name),
-            amount: amt,
-            category: cat,
-            icon,
-            who,
-            date: dateStr,
-            recurring: false,
-            unnecessary: false,
-          })
-        }
-
-        setPreview(parsed.slice(0, 5))
-        setStep('preview')
-        setLoading(false)
-        window._allImportData = parsed
-      } catch (err) {
-        console.error(err)
-        alert('파일을 읽는 중 오류가 발생했어요. 뱅크샐러드 엑셀 파일인지 확인해주세요.')
-        setLoading(false)
-      }
+  useEffect(() => {
+    const theme = localStorage.getItem('theme')
+    setDarkMode(theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches))
+    if (coupleId) {
+      loadBudgets()
+      loadCoupleInfo()
+      loadCategories()
     }
-    reader.readAsBinaryString(file)
+  }, [coupleId])
+
+  async function loadCategories() {
+    const { data } = await supabase.from('categories').select('*').eq('couple_id', coupleId).order('created_at')
+    if (data && data.length > 0) {
+      setExpenseCats(data.filter(c => c.type === 'expense'))
+      setIncomeCats(data.filter(c => c.type === 'income'))
+    } else {
+      await saveDefaultCategories()
+    }
   }
 
-  async function handleImport() {
-    setLoading(true)
-    const all = window._allImportData || []
-    await onImport(all)
-    setLoading(false)
-    setStep('done')
+  async function saveDefaultCategories() {
+    const all = [...DEFAULT_EXPENSE_CATS, ...DEFAULT_INCOME_CATS].map(c => ({ ...c, couple_id: coupleId }))
+    await supabase.from('categories').insert(all)
+    await loadCategories()
   }
+
+  async function loadBudgets() {
+    const { data } = await supabase.from('budgets').select('*').eq('couple_id', coupleId)
+    if (data && data.length > 0) setBudgets(data)
+  }
+
+  async function loadCoupleInfo() {
+    const { data } = await supabase.from('couples').select('code').eq('id', coupleId).single()
+    if (data) setCoupleCode(data.code)
+
+    const { data: profiles } = await supabase.from('profiles').select('*').eq('couple_id', coupleId)
+    if (profiles) {
+      const partner = profiles.find(p => p.id !== user?.id)
+      if (partner) setPartnerProfile(partner)
+    }
+
+    const { data: settings } = await supabase.from('couple_settings')
+      .select('last_import_at, last_import_date')
+      .eq('couple_id', coupleId)
+      .single()
+    if (settings?.last_import_at) {
+      setLastImportAt(settings.last_import_at)
+      setLastImportDate(settings.last_import_date)
+    }
+  }
+
+  function toggleDarkMode() {
+    const next = !darkMode
+    setDarkMode(next)
+    localStorage.setItem('theme', next ? 'dark' : 'light')
+    document.documentElement.setAttribute('data-theme', next ? 'dark' : 'light')
+  }
+
+  async function saveBudget(cat, amount) {
+    const existing = budgets.find(b => b.category === cat.category)
+    if (existing?.id) {
+      await supabase.from('budgets').update({ budget: amount }).eq('id', existing.id)
+    } else {
+      await supabase.from('budgets').insert([{ category: cat.category, icon: cat.icon, budget: amount, couple_id: coupleId }])
+    }
+    setBudgets(prev => prev.map(b => b.category === cat.category ? { ...b, budget: amount } : b))
+    setShowBudgetEdit(false)
+  }
+
+  function startEdit(type, index) {
+    const cat = type === 'expense' ? expenseCats[index] : incomeCats[index]
+    setEditingCat({ ...cat, index, catType: type })
+    setShowCatEdit(true)
+  }
+
+  async function saveEdit() {
+    if (!editingCat.name.trim()) return
+    setCatLoading(true)
+    if (editingCat.id) {
+      await supabase.from('categories').update({ name: editingCat.name, icon: editingCat.icon }).eq('id', editingCat.id)
+    }
+    await loadCategories()
+    setCatLoading(false)
+    setShowCatEdit(false)
+  }
+
+  async function addCategory(type) {
+    const newCat = { name: '새 카테고리', icon: '📌', type, couple_id: coupleId }
+    const { data } = await supabase.from('categories').insert([newCat]).select().single()
+    if (data) {
+      setEditingCat({ ...data, index: -1, catType: type })
+      setShowCatEdit(true)
+      await loadCategories()
+    }
+  }
+
+  async function deleteCategory(cat) {
+    if (!cat.id) return
+    await supabase.from('categories').delete().eq('id', cat.id)
+    await loadCategories()
+  }
+
+  function Toggle({ value, onChange }) {
+    return (
+      <div onClick={onChange} style={{ width: 44, height: 26, borderRadius: 13, cursor: 'pointer', background: value ? 'var(--blue)' : 'var(--border)', position: 'relative', transition: 'background 0.2s' }}>
+        <div style={{ position: 'absolute', top: 3, left: value ? 21 : 3, width: 20, height: 20, borderRadius: '50%', background: 'white', transition: 'left 0.2s' }} />
+      </div>
+    )
+  }
+
+  const currentCats = catType === 'expense' ? expenseCats : incomeCats
 
   return (
-    <div style={{
-      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
-      zIndex: 50, display: 'flex', alignItems: 'flex-end', justifyContent: 'center'
-    }}>
-      <div style={{
-        background: 'var(--bg-primary)', borderRadius: '20px 20px 0 0',
-        padding: '24px 20px 40px', width: '100%', maxWidth: 430,
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-          <span style={{ fontSize: 17, fontWeight: 700 }}>뱅크샐러드 가져오기</span>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}>
-            <X size={22} />
+    <div style={{ paddingBottom: 90 }}>
+      <div className="topbar">
+        <span style={{ fontSize: 18, fontWeight: 700 }}>설정</span>
+      </div>
+
+      {/* 내 프로필 */}
+      <div className="card" style={{ marginTop: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ width: 48, height: 48, borderRadius: '50%', background: profile?.role === 'h' ? 'var(--blue-light)' : '#fce8f3', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>
+            {profile?.role === 'h' ? '👨' : '👩'}
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 16, fontWeight: 700 }}>{profile?.nickname || '사용자'}</div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>{user?.email}</div>
+          </div>
+          <button onClick={onSignOut} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '8px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'none', fontSize: 13, color: 'var(--text-secondary)', cursor: 'pointer' }}>
+            <LogOut size={14} /> 로그아웃
           </button>
         </div>
+      </div>
 
-        {step === 'upload' && (
-          <>
-            <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16, lineHeight: 1.6 }}>
-              뱅크샐러드 앱 → 더보기 → 가계부 내역 내보내기 → 엑셀 파일을 업로드해주세요.
+      {/* 배우자 초대 */}
+      <div className="card" style={{ marginTop: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+          <Users size={18} color="var(--blue)" />
+          <span style={{ fontSize: 14, fontWeight: 700 }}>배우자 초대</span>
+        </div>
+        {partnerProfile && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'var(--green-light)', borderRadius: 'var(--radius-sm)', marginBottom: 12 }}>
+            <span style={{ fontSize: 20 }}>{partnerProfile.role === 'h' ? '👨' : '👩'}</span>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{partnerProfile.nickname}</div>
+              <div style={{ fontSize: 11, color: 'var(--green)' }}>● 연결됨</div>
             </div>
+          </div>
+        )}
+        {coupleCode ? (
+          <div style={{ textAlign: 'center', padding: '16px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)', marginBottom: 10 }}>
+            <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 8 }}>배우자에게 아래 코드를 알려주세요</div>
+            <div style={{ fontSize: 32, fontWeight: 700, letterSpacing: 8, color: 'var(--blue)' }}>{coupleCode}</div>
+            <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 8 }}>배우자가 회원가입 후 이 코드를 입력하면 연결돼요</div>
+          </div>
+        ) : (
+          <div style={{ textAlign: 'center', padding: '16px 0', fontSize: 13, color: 'var(--text-secondary)' }}>코드를 불러오는 중...</div>
+        )}
+        <button onClick={() => { if (coupleCode) { navigator.clipboard?.writeText(coupleCode); alert(`코드 ${coupleCode} 가 복사됐어요!`) } }} style={{ width: '100%', padding: '12px', borderRadius: 'var(--radius-sm)', border: '1px dashed var(--border)', background: 'none', fontSize: 13, color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+          <Link size={14} /> 코드 복사하기
+        </button>
+      </div>
 
-            <div style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>누구의 내역인가요?</div>
+      {/* 화면 설정 */}
+      <div className="card" style={{ marginTop: 10 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {darkMode ? <Moon size={18} color="var(--blue)" /> : <Sun size={18} color="var(--blue)" />}
+            <span style={{ fontSize: 14, fontWeight: 700 }}>다크 모드</span>
+          </div>
+          <Toggle value={darkMode} onChange={toggleDarkMode} />
+        </div>
+      </div>
+
+      {/* 예산 설정 */}
+      <div className="card" style={{ marginTop: 10 }}>
+        <button onClick={() => setShowBudget(true)} style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Wallet size={18} color="var(--blue)" />
+            <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>예산 설정</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{budgets.length}개 카테고리</span>
+            <ChevronRight size={16} color="var(--text-tertiary)" />
+          </div>
+        </button>
+      </div>
+
+      {/* 고정 지출 */}
+      <div className="card" style={{ marginTop: 10 }}>
+        <button onClick={() => setShowFixed(true)} style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 18 }}>🔁</span>
+            <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>고정 지출 관리</span>
+          </div>
+          <ChevronRight size={16} color="var(--text-tertiary)" />
+        </button>
+      </div>
+
+      {/* 데이터 가져오기 */}
+      <div className="card" style={{ marginTop: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+          <Download size={18} color="var(--blue)" />
+          <span style={{ fontSize: 14, fontWeight: 700 }}>데이터 가져오기</span>
+        </div>
+        {lastImportAt && (
+          <div style={{ padding: '8px 12px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', marginBottom: 12 }}>
+            <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>마지막 가져오기</div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginTop: 2 }}>
+              📅 {formatDateTimeKR(lastImportAt)}
+            </div>
+            {lastImportDate && (
+              <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
+                다음 가져오기 시 이 날짜 이후부터 자동 설정돼요
+              </div>
+            )}
+          </div>
+        )}
+        <button onClick={onImport} style={{ width: '100%', padding: '14px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)', background: 'var(--bg-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 22 }}>🏦</span>
+            <div style={{ textAlign: 'left' }}>
+              <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>뱅크샐러드 가져오기</div>
+              <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>엑셀 파일로 내역 한번에 가져오기</div>
+            </div>
+          </div>
+          <ChevronRight size={18} color="var(--text-tertiary)" />
+        </button>
+      </div>
+
+      {/* 카테고리 관리 */}
+      <div className="card" style={{ marginTop: 10 }}>
+        <button onClick={() => setShowCatList(true)} style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Tag size={18} color="var(--blue)" />
+            <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>카테고리 관리</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>지출 {expenseCats.length}개 · 수입 {incomeCats.length}개</span>
+            <ChevronRight size={16} color="var(--text-tertiary)" />
+          </div>
+        </button>
+      </div>
+
+      {/* 알림 설정 */}
+      <div className="card" style={{ marginTop: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+          <Bell size={18} color="var(--blue)" />
+          <span style={{ fontSize: 14, fontWeight: 700 }}>알림 설정</span>
+        </div>
+        {[
+          { key: 'budgetOver', label: '예산 초과 알림' },
+          { key: 'recurring', label: '정기 결제 알림' },
+          { key: 'monthlyReport', label: '월간 리포트' },
+        ].map(({ key, label }, i, arr) => (
+          <div key={key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '13px 0', borderBottom: i < arr.length - 1 ? '1px solid var(--border)' : 'none' }}>
+            <span style={{ fontSize: 14 }}>{label}</span>
+            <Toggle value={alerts[key]} onChange={() => setAlerts(a => ({ ...a, [key]: !a[key] }))} />
+          </div>
+        ))}
+      </div>
+
+      <div style={{ textAlign: 'center', marginTop: 20, fontSize: 12, color: 'var(--text-tertiary)' }}>우리 가계부 v0.1.0</div>
+
+      {/* 예산 설정 모달 */}
+      {showBudget && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 50, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }} onClick={() => setShowBudget(false)}>
+          <div style={{ background: 'var(--bg-primary)', borderRadius: '20px 20px 0 0', width: '100%', maxWidth: 430, maxHeight: '85vh', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
+            <div style={{ padding: '20px 20px 12px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: 16, fontWeight: 700 }}>예산 설정</span>
+              <button onClick={() => setShowBudget(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}><X size={22} /></button>
+            </div>
+            <div style={{ overflowY: 'auto', flex: 1, padding: '8px 16px 20px' }}>
+              {budgets.map((b, i) => (
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 14px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', marginTop: 8 }}>
+                  <span style={{ fontSize: 15 }}>{b.icon} {b.category}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{b.budget?.toLocaleString()}원</span>
+                    <button onClick={() => { setEditingBudget({ ...b, newAmount: String(b.budget) }); setShowBudgetEdit(true) }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--blue)', fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <Pencil size={13} /> 수정
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 예산 수정 모달 */}
+      {showBudgetEdit && editingBudget && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 60, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }} onClick={() => setShowBudgetEdit(false)}>
+          <div style={{ background: 'var(--bg-primary)', borderRadius: '20px 20px 0 0', padding: '24px 20px 40px', width: '100%', maxWidth: 430 }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <span style={{ fontSize: 17, fontWeight: 700 }}>{editingBudget.icon} {editingBudget.category} 예산</span>
+              <button onClick={() => setShowBudgetEdit(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}><X size={22} /></button>
+            </div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>월 예산 금액</div>
+            <input type="number" value={editingBudget.newAmount} onChange={e => setEditingBudget(prev => ({ ...prev, newAmount: e.target.value }))} placeholder="0"
+              style={{ width: '100%', padding: '14px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', fontSize: 20, fontWeight: 700, outline: 'none', background: 'var(--bg-primary)', color: 'var(--text-primary)', marginBottom: 20 }} />
+            <button onClick={() => saveBudget(editingBudget, parseInt(editingBudget.newAmount) || 0)} style={{ width: '100%', padding: '16px', borderRadius: 'var(--radius-md)', background: 'var(--blue)', color: 'white', border: 'none', fontSize: 16, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+              <Check size={18} /> 저장하기
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 카테고리 목록 모달 */}
+      {showCatList && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 50, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }} onClick={() => setShowCatList(false)}>
+          <div style={{ background: 'var(--bg-primary)', borderRadius: '20px 20px 0 0', width: '100%', maxWidth: 430, maxHeight: '85vh', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
+            <div style={{ padding: '20px 20px 12px', borderBottom: '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <span style={{ fontSize: 16, fontWeight: 700 }}>카테고리 관리</span>
+                <button onClick={() => setShowCatList(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}><X size={22} /></button>
+              </div>
               <div style={{ display: 'flex', gap: 8 }}>
-                {[['h', '👨 남편'], ['w', '👩 아내'], ['both', '공동']].map(([val, label]) => (
-                  <button key={val}
-                    onClick={() => setWho(val)}
-                    style={{
-                      flex: 1, padding: '10px', borderRadius: 'var(--radius-sm)',
-                      border: '1px solid var(--border)', fontSize: 13, fontWeight: 500, cursor: 'pointer',
-                      background: who === val ? 'var(--blue)' : 'var(--bg-primary)',
-                      color: who === val ? 'white' : 'var(--text-secondary)',
-                    }}>
-                    {label}
+                {['expense', 'income'].map(type => (
+                  <button key={type} onClick={() => setCatType(type)} style={{ flex: 1, padding: '8px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', fontSize: 13, fontWeight: 500, cursor: 'pointer', background: catType === type ? 'var(--blue)' : 'var(--bg-primary)', color: catType === type ? 'white' : 'var(--text-secondary)' }}>
+                    {type === 'expense' ? '지출' : '수입'}
                   </button>
                 ))}
               </div>
             </div>
-
-            <label style={{
-              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-              gap: 10, padding: '32px', border: '2px dashed var(--border)', borderRadius: 'var(--radius-md)',
-              cursor: 'pointer', background: 'var(--bg-secondary)',
-            }}>
-              <Upload size={28} color="var(--text-tertiary)" />
-              <span style={{ fontSize: 14, color: 'var(--text-secondary)', fontWeight: 500 }}>
-                {loading ? '읽는 중...' : '엑셀 파일 선택'}
-              </span>
-              <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>.xlsx 파일만 가능해요</span>
-              <input type="file" accept=".xlsx" onChange={handleFile} style={{ display: 'none' }} />
-            </label>
-          </>
-        )}
-
-        {step === 'preview' && (
-          <>
-            <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 12 }}>
-              총 <strong style={{ color: 'var(--text-primary)' }}>{(window._allImportData || []).length}건</strong>의 내역을 가져올 수 있어요. 미리보기:
-            </div>
-            <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', overflow: 'hidden', marginBottom: 20 }}>
-              {preview.map((tx, i) => (
-                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', borderBottom: i < preview.length - 1 ? '1px solid var(--border)' : 'none' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: 18 }}>{tx.icon}</span>
-                    <div>
-                      <div style={{ fontSize: 13, fontWeight: 600 }}>{tx.name}</div>
-                      <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{tx.category} · {tx.date}</div>
-                    </div>
+            <div style={{ overflowY: 'auto', flex: 1, padding: '8px 16px 12px' }}>
+              {currentCats.map((cat, i) => (
+                <div key={cat.id || i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 14px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', marginTop: 8 }}>
+                  <span style={{ fontSize: 15 }}>{cat.icon} {cat.name}</span>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button onClick={() => startEdit(catType, i)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--blue)', fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <Pencil size={13} /> 수정
+                    </button>
+                    <button onClick={() => deleteCategory(cat)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--red)' }}>
+                      <Trash2 size={14} />
+                    </button>
                   </div>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: tx.amount > 0 ? 'var(--green)' : 'var(--text-primary)' }}>
-                    {tx.amount > 0 ? '+' : ''}{tx.amount.toLocaleString()}원
-                  </span>
                 </div>
               ))}
             </div>
-            <button
-              onClick={handleImport}
-              disabled={loading}
-              style={{
-                width: '100%', padding: '16px', borderRadius: 'var(--radius-md)',
-                background: 'var(--blue)', color: 'white', border: 'none',
-                fontSize: 16, fontWeight: 700, cursor: 'pointer',
-              }}>
-              {loading ? '가져오는 중...' : `${(window._allImportData || []).length}건 모두 가져오기`}
-            </button>
-          </>
-        )}
-
-        {step === 'done' && (
-          <div style={{ textAlign: 'center', padding: '20px 0' }}>
-            <CheckCircle size={48} color="var(--green)" style={{ marginBottom: 12 }} />
-            <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>가져오기 완료!</div>
-            <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 24 }}>
-              내역이 성공적으로 추가됐어요.
+            <div style={{ padding: '8px 16px 24px' }}>
+              <button onClick={() => addCategory(catType)} style={{ width: '100%', padding: '12px', borderRadius: 'var(--radius-sm)', border: '1px dashed var(--border)', background: 'none', fontSize: 13, color: 'var(--blue)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontWeight: 600 }}>
+                <Plus size={15} /> 카테고리 추가
+              </button>
             </div>
-            <button onClick={onClose} style={{
-              width: '100%', padding: '16px', borderRadius: 'var(--radius-md)',
-              background: 'var(--blue)', color: 'white', border: 'none',
-              fontSize: 16, fontWeight: 700, cursor: 'pointer',
-            }}>
-              확인
+          </div>
+        </div>
+      )}
+
+      {/* 카테고리 수정 모달 */}
+      {showCatEdit && editingCat && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 60, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }} onClick={() => setShowCatEdit(false)}>
+          <div style={{ background: 'var(--bg-primary)', borderRadius: '20px 20px 0 0', padding: '24px 20px 40px', width: '100%', maxWidth: 430 }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <span style={{ fontSize: 17, fontWeight: 700 }}>카테고리 수정</span>
+              <button onClick={() => setShowCatEdit(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}><X size={22} /></button>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>아이콘 (이모지 입력)</div>
+                <input value={editingCat.icon} onChange={e => setEditingCat(prev => ({ ...prev, icon: e.target.value }))} style={{ width: '100%', padding: '12px 14px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', fontSize: 24, outline: 'none', background: 'var(--bg-primary)' }} />
+              </div>
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>카테고리 이름</div>
+                <input value={editingCat.name} onChange={e => setEditingCat(prev => ({ ...prev, name: e.target.value }))} style={{ width: '100%', padding: '12px 14px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', fontSize: 14, outline: 'none', background: 'var(--bg-primary)', color: 'var(--text-primary)' }} />
+              </div>
+              <div style={{ padding: '12px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', textAlign: 'center' }}>
+                <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>미리보기: </span>
+                <span style={{ fontSize: 15, fontWeight: 600 }}>{editingCat.icon} {editingCat.name}</span>
+              </div>
+            </div>
+            <button onClick={saveEdit} disabled={catLoading} style={{ width: '100%', marginTop: 20, padding: '16px', borderRadius: 'var(--radius-md)', background: 'var(--blue)', color: 'white', border: 'none', fontSize: 16, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+              <Check size={18} /> {catLoading ? '저장 중...' : '저장하기'}
             </button>
           </div>
-        )}
-      </div>
+        </div>
+      )}
+
+      {showFixed && (
+        <FixedExpenseModal onClose={() => setShowFixed(false)} coupleId={coupleId} onApply={() => window.location.reload()} />
+      )}
     </div>
   )
 }

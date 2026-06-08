@@ -29,6 +29,12 @@ const DEFAULT_BUDGETS = [
   { category: '건강', icon: '🏋️', budget: 200000 },
 ]
 
+function formatDateTimeKR(isoStr) {
+  if (!isoStr) return null
+  const d = new Date(isoStr)
+  return `${d.getFullYear()}년 ${d.getMonth()+1}월 ${d.getDate()}일 ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`
+}
+
 export default function SettingsScreen({ onImport, onSignOut, user, profile, coupleId }) {
   const [alerts, setAlerts] = useState({ budgetOver: true, recurring: true, monthlyReport: true })
   const [expenseCats, setExpenseCats] = useState(DEFAULT_EXPENSE_CATS)
@@ -46,6 +52,8 @@ export default function SettingsScreen({ onImport, onSignOut, user, profile, cou
   const [coupleCode, setCoupleCode] = useState('')
   const [partnerProfile, setPartnerProfile] = useState(null)
   const [catLoading, setCatLoading] = useState(false)
+  const [lastImportAt, setLastImportAt] = useState(null)
+  const [lastImportDate, setLastImportDate] = useState(null)
 
   useEffect(() => {
     const theme = localStorage.getItem('theme')
@@ -63,7 +71,6 @@ export default function SettingsScreen({ onImport, onSignOut, user, profile, cou
       setExpenseCats(data.filter(c => c.type === 'expense'))
       setIncomeCats(data.filter(c => c.type === 'income'))
     } else {
-      // 처음이면 기본값 저장
       await saveDefaultCategories()
     }
   }
@@ -82,10 +89,20 @@ export default function SettingsScreen({ onImport, onSignOut, user, profile, cou
   async function loadCoupleInfo() {
     const { data } = await supabase.from('couples').select('code').eq('id', coupleId).single()
     if (data) setCoupleCode(data.code)
+
     const { data: profiles } = await supabase.from('profiles').select('*').eq('couple_id', coupleId)
     if (profiles) {
       const partner = profiles.find(p => p.id !== user?.id)
       if (partner) setPartnerProfile(partner)
+    }
+
+    const { data: settings } = await supabase.from('couple_settings')
+      .select('last_import_at, last_import_date')
+      .eq('couple_id', coupleId)
+      .single()
+    if (settings?.last_import_at) {
+      setLastImportAt(settings.last_import_at)
+      setLastImportDate(settings.last_import_date)
     }
   }
 
@@ -178,7 +195,6 @@ export default function SettingsScreen({ onImport, onSignOut, user, profile, cou
           <Users size={18} color="var(--blue)" />
           <span style={{ fontSize: 14, fontWeight: 700 }}>배우자 초대</span>
         </div>
-
         {partnerProfile && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'var(--green-light)', borderRadius: 'var(--radius-sm)', marginBottom: 12 }}>
             <span style={{ fontSize: 20 }}>{partnerProfile.role === 'h' ? '👨' : '👩'}</span>
@@ -188,7 +204,6 @@ export default function SettingsScreen({ onImport, onSignOut, user, profile, cou
             </div>
           </div>
         )}
-
         {coupleCode ? (
           <div style={{ textAlign: 'center', padding: '16px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)', marginBottom: 10 }}>
             <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 8 }}>배우자에게 아래 코드를 알려주세요</div>
@@ -198,7 +213,6 @@ export default function SettingsScreen({ onImport, onSignOut, user, profile, cou
         ) : (
           <div style={{ textAlign: 'center', padding: '16px 0', fontSize: 13, color: 'var(--text-secondary)' }}>코드를 불러오는 중...</div>
         )}
-
         <button onClick={() => { if (coupleCode) { navigator.clipboard?.writeText(coupleCode); alert(`코드 ${coupleCode} 가 복사됐어요!`) } }} style={{ width: '100%', padding: '12px', borderRadius: 'var(--radius-sm)', border: '1px dashed var(--border)', background: 'none', fontSize: 13, color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
           <Link size={14} /> 코드 복사하기
         </button>
@@ -246,6 +260,19 @@ export default function SettingsScreen({ onImport, onSignOut, user, profile, cou
           <Download size={18} color="var(--blue)" />
           <span style={{ fontSize: 14, fontWeight: 700 }}>데이터 가져오기</span>
         </div>
+        {lastImportAt && (
+          <div style={{ padding: '8px 12px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', marginBottom: 12 }}>
+            <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>마지막 가져오기</div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginTop: 2 }}>
+              📅 {formatDateTimeKR(lastImportAt)}
+            </div>
+            {lastImportDate && (
+              <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
+                다음 가져오기 시 이 날짜 이후부터 자동 설정돼요
+              </div>
+            )}
+          </div>
+        )}
         <button onClick={onImport} style={{ width: '100%', padding: '14px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)', background: 'var(--bg-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <span style={{ fontSize: 22 }}>🏦</span>
@@ -406,11 +433,7 @@ export default function SettingsScreen({ onImport, onSignOut, user, profile, cou
       )}
 
       {showFixed && (
-        <FixedExpenseModal
-          onClose={() => setShowFixed(false)}
-          coupleId={coupleId}
-          onApply={() => window.location.reload()}
-        />
+        <FixedExpenseModal onClose={() => setShowFixed(false)} coupleId={coupleId} onApply={() => window.location.reload()} />
       )}
     </div>
   )

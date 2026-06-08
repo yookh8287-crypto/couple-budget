@@ -8,7 +8,7 @@ import { formatKRW, filterByMember } from '@/lib/data'
 const MONTHS = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월']
 const DAYS = ['일','월','화','수','목','금','토']
 
-export default function TransactionScreen({ transactions, onToggleUnnecessary, onUpdate, onToggleExcluded, coupleId }) {
+export default function TransactionScreen({ transactions, onToggleUnnecessary, onUpdate, onToggleExcluded, onToggleHidden, coupleId }) {
   const [member, setMember] = useState('all')
   const [monthIdx, setMonthIdx] = useState(new Date().getMonth())
   const [year, setYear] = useState(new Date().getFullYear())
@@ -137,7 +137,7 @@ export default function TransactionScreen({ transactions, onToggleUnnecessary, o
           </div>
         ) : (
           displayList.map(tx => (
-            <TransactionItem key={tx.id} tx={tx} onToggleUnnecessary={onToggleUnnecessary} onUpdate={onUpdate} onToggleExcluded={onToggleExcluded} coupleId={coupleId} />
+            <TransactionItem key={tx.id} tx={tx} onToggleUnnecessary={onToggleUnnecessary} onUpdate={onUpdate} onToggleExcluded={onToggleExcluded} onToggleHidden={onToggleHidden} coupleId={coupleId} />
           ))
         )}
       </div>
