@@ -99,7 +99,7 @@ export default function SettingsScreen({ onImport, onSignOut, user, profile, cou
     const { data: settings } = await supabase.from('couple_settings')
       .select('last_import_at, last_import_date')
       .eq('couple_id', coupleId)
-      .single()
+      .maybeSingle()
     if (settings?.last_import_at) {
       setLastImportAt(settings.last_import_at)
       setLastImportDate(settings.last_import_date)
