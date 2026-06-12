@@ -1,10 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { X, Check } from 'lucide-react'
 import { supabase } from '@/lib/data'
 
-const EXPENSE_CATEGORIES = [
+const DEFAULT_EXPENSE_CATS = [
   { name: '식비', icon: '🛒' }, { name: '외식', icon: '🍽️' }, { name: '카페', icon: '☕' },
   { name: '교통', icon: '⛽' }, { name: '주거', icon: '🏠' }, { name: '구독', icon: '📺' },
   { name: '건강', icon: '🏋️' }, { name: '의료', icon: '🏥' }, { name: '여가', icon: '🎮' },
@@ -12,7 +12,7 @@ const EXPENSE_CATEGORIES = [
   { name: '기타', icon: '💳' },
 ]
 
-const INCOME_CATEGORIES = [
+const DEFAULT_INCOME_CATS = [
   { name: '급여', icon: '💰' }, { name: '상여금', icon: '🎁' }, { name: '이자', icon: '🏦' },
   { name: '용돈', icon: '💵' }, { name: '환급', icon: '↩️' }, { name: '기타수입', icon: '💸' },
 ]
@@ -34,20 +34,70 @@ function Toggle({ value, onChange }) {
 
 export default function TransactionDetailModal({ tx, coupleId, onClose, onUpdate }) {
   const isIncome = tx.amount > 0
-  const categories = isIncome ? INCOME_CATEGORIES : EXPENSE_CATEGORIES
 
   const [category, setCategory] = useState(tx.category || '')
   const [memo, setMemo] = useState(tx.memo || '')
   const [unnecessary, setUnnecessary] = useState(tx.unnecessary || false)
   const [excluded, setExcluded] = useState(tx.excluded || false)
+  const [recurring, setRecurring] = useState(tx.recurring || false)
   const [saving, setSaving] = useState(false)
+  const [categories, setCategories] = useState(isIncome ? DEFAULT_INCOME_CATS : DEFAULT_EXPENSE_CATS)
+
+  // Supabase에서 커플 카테고리 불러오기
+  useEffect(() => {
+    if (!coupleId) return
+    const type = isIncome ? 'income' : 'expense'
+    supabase.from('categories').select('*').eq('couple_id', coupleId).eq('type', type).order('created_at')
+      .then(({ data }) => {
+        if (data && data.length > 0) setCategories(data)
+      })
+  }, [coupleId, isIncome])
 
   async function handleSave() {
     setSaving(true)
-    const icon = categories.find(c => c.name === category)?.icon || tx.icon
-    const updates = { category, icon, memo, unnecessary, excluded }
-    const { error } = await supabase.from('transactions').update(updates).eq('id', tx.id)
-    if (!error) onUpdate({ ...tx, ...updates })
+    try {
+      const icon = categories.find(c => c.name === category)?.icon || tx.icon
+      const updates = { category, icon, memo, unnecessary, excluded, recurring }
+
+      const { error } = await supabase.from('transactions').update(updates).eq('id', tx.id)
+      if (error) throw error
+
+      // 정기지출 토글 ON → fixed_expenses에 자동 등록
+      if (recurring && !tx.recurring) {
+        // 이미 등록된 고정지출인지 확인
+        const { data: existing } = await supabase
+          .from('fixed_expenses')
+          .select('id')
+          .eq('couple_id', coupleId)
+          .eq('name', tx.name)
+          .maybeSingle()
+
+        if (!existing) {
+          const day = new Date(tx.date).getDate()
+          await supabase.from('fixed_expenses').insert({
+            couple_id: coupleId,
+            name: tx.name,
+            amount: Math.abs(tx.amount),
+            category: category,
+            icon: icon,
+            who: tx.who || 'both',
+            day_of_month: day,
+          })
+        }
+      }
+
+      // 정기지출 토글 OFF → fixed_expenses에서 제거
+      if (!recurring && tx.recurring) {
+        await supabase.from('fixed_expenses')
+          .delete()
+          .eq('couple_id', coupleId)
+          .eq('name', tx.name)
+      }
+
+      onUpdate({ ...tx, ...updates })
+    } catch (e) {
+      console.error(e)
+    }
     setSaving(false)
   }
 
@@ -70,14 +120,14 @@ export default function TransactionDetailModal({ tx, coupleId, onClose, onUpdate
             <div style={{ fontSize: 36 }}>{tx.icon}</div>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>{tx.name}</div>
-              <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{tx.date} · {tx.payment_method || '결제수단 없음'}</div>
+              <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{tx.date}{tx.payment_method ? ` · ${tx.payment_method}` : ''}</div>
             </div>
             <div style={{ fontSize: 18, fontWeight: 700, color: isIncome ? 'var(--green)' : 'var(--text-primary)' }}>
               {isIncome ? '+' : '-'}{Math.abs(tx.amount).toLocaleString()}원
             </div>
           </div>
 
-          {/* 카테고리 */}
+          {/* 카테고리 - Supabase에서 불러온 목록 */}
           <div>
             <label style={labelStyle}>카테고리</label>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
@@ -110,9 +160,9 @@ export default function TransactionDetailModal({ tx, coupleId, onClose, onUpdate
             />
           </div>
 
-          {/* 토글 옵션 */}
+          {/* 토글 옵션 - 지출만 */}
           {!isIncome && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 0, border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
+            <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 16px', borderBottom: '1px solid var(--border)' }}>
                 <div>
                   <div style={{ fontSize: 14, fontWeight: 600 }}>🚩 불필요한 소비</div>
@@ -120,12 +170,21 @@ export default function TransactionDetailModal({ tx, coupleId, onClose, onUpdate
                 </div>
                 <Toggle value={unnecessary} onChange={() => setUnnecessary(v => !v)} />
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 16px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 16px', borderBottom: '1px solid var(--border)' }}>
                 <div>
                   <div style={{ fontSize: 14, fontWeight: 600 }}>🚫 합계에서 제외</div>
                   <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>수입/지출 합계에 포함되지 않아요</div>
                 </div>
                 <Toggle value={excluded} onChange={() => setExcluded(v => !v)} />
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 16px' }}>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 600 }}>🔁 정기 지출</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
+                    {recurring && !tx.recurring ? '고정지출로 자동 등록돼요' : '매월 반복되는 지출이에요'}
+                  </div>
+                </div>
+                <Toggle value={recurring} onChange={() => setRecurring(v => !v)} />
               </div>
             </div>
           )}
