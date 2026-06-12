@@ -66,38 +66,52 @@ export default function ImportModal({ onClose, onImport, coupleId }) {
     try {
       const buf = await file.arrayBuffer()
       const wb = XLSX.read(buf, { type: 'array' })
-      const ws = wb.Sheets[wb.SheetNames[0]]
-      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' })
 
-      // 헤더 행 찾기 (날짜 컬럼 있는 행)
-      let headerIdx = -1
-      let headers = []
-      for (let i = 0; i < Math.min(10, rows.length); i++) {
-        const row = rows[i].map(c => String(c).trim())
-        if (row.some(c => c.includes('날짜') || c.includes('일자') || c === '거래일')) {
-          headerIdx = i
-          headers = row
-          break
+      // 모든 시트에서 '날짜' 컬럼 있는 시트 찾기 (뱅크샐러드는 '가계부 내역' 탭)
+      let ws = null
+      for (const sheetName of wb.SheetNames) {
+        const sheet = wb.Sheets[sheetName]
+        const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' })
+        if (rows.length > 0) {
+          const firstRow = rows[0].map(c => String(c).trim())
+          if (firstRow.includes('날짜')) { ws = sheet; break }
         }
       }
-      if (headerIdx === -1) {
+      if (!ws) {
         setError('날짜 컬럼을 찾을 수 없어요. 뱅크샐러드 엑셀 파일인지 확인해주세요.')
         setLoading(false)
         return
       }
 
-      // 컬럼 인덱스
-      const colIdx = (keywords) => headers.findIndex(h => keywords.some(k => h.includes(k)))
-      const dateCol = colIdx(['날짜', '일자', '거래일'])
-      const nameCol = colIdx(['내용', '적요', '거래처', '상호'])
-      const amountCol = colIdx(['금액', '출금', '지출'])
-      const incomeCol = colIdx(['입금', '수입'])
-      const categoryCol = colIdx(['분류', '카테고리'])
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' })
+      const headers = rows[0].map(c => String(c).trim())
+
+      // 뱅크샐러드 컬럼: 날짜, 시간, 타입, 대분류, 소분류, 내용, 금액, 화폐, 결제수단, 메모
+      const col = (name) => headers.indexOf(name)
+      const dateCol = col('날짜')
+      const typeCol = col('타입')
+      const bigCatCol = col('대분류')
+      const smallCatCol = col('소분류')
+      const nameCol = col('내용')
+      const amountCol = col('금액')
+      const paymentCol = col('결제수단')
+      const memoCol = col('메모')
+
+      // 카테고리 아이콘 매핑
+      const catIconMap = {
+        '식비': '🛒', '외식': '🍽️', '카페/간식': '☕', '카페': '☕',
+        '교통': '⛽', '주거': '🏠', '구독': '📺', '건강': '🏋️',
+        '의료': '🏥', '여가': '🎮', '쇼핑': '🛍️', '교육': '📚',
+        '금융': '💳', '여행/숙박': '✈️', '문화/여가': '🎭',
+        '온라인쇼핑': '🛒', '자동차': '🚗', '반려동물': '🐾',
+        '급여': '💰', '이자/대출': '🏦', '이체': '↔️', '기타': '💳',
+      }
 
       const txList = []
-      for (let i = headerIdx + 1; i < rows.length; i++) {
+      for (let i = 1; i < rows.length; i++) {
         const row = rows[i]
         if (!row || row.every(c => c === '')) continue
+
         const date = parseDate(row[dateCol])
         if (!date) continue
 
@@ -105,26 +119,34 @@ export default function ImportModal({ onClose, onImport, coupleId }) {
         if (startDate && date < startDate) continue
         if (endDate && date > endDate) continue
 
-        const rawAmount = parseAmount(row[amountCol])
-        const rawIncome = incomeCol >= 0 ? parseAmount(row[incomeCol]) : 0
-        const isIncome = rawIncome > 0 && rawAmount === 0
-        const amount = isIncome ? rawIncome : rawAmount
+        const type = String(row[typeCol] || '').trim()
+        // 이체는 제외 (내계좌이체 등)
+        if (type === '이체') continue
+
+        const amount = parseAmount(row[amountCol])
         if (amount === 0) continue
+
+        const bigCat = String(row[bigCatCol] || '').trim()
+        const smallCat = String(row[smallCatCol] || '').trim()
+        const category = smallCat && smallCat !== '미분류' ? smallCat : bigCat || '기타'
+        const icon = catIconMap[smallCat] || catIconMap[bigCat] || (amount > 0 ? '💰' : '💳')
+        const payment = paymentCol >= 0 ? String(row[paymentCol] || '').trim() : ''
+        const memo = memoCol >= 0 ? String(row[memoCol] || '').trim() : ''
 
         txList.push({
           date,
           name: String(row[nameCol] || '').trim() || '내역없음',
-          amount,
-          category: categoryCol >= 0 ? String(row[categoryCol] || '').trim() : (isIncome ? '기타수입' : '기타'),
-          icon: isIncome ? '💰' : '💳',
+          amount,  // 지출 음수(-), 수입 양수(+) 그대로
+          category,
+          icon,
           who: 'h',
           recurring: false,
           unnecessary: false,
           excluded: false,
           hidden: false,
           couple_id: coupleId,
-          memo: '',
-          payment_method: '',
+          memo,
+          payment_method: payment,
         })
       }
 
