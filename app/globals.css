@@ -111,21 +111,17 @@ body {
 .bottom-nav {
   position: fixed;
   bottom: 0;
-  left: 50%;
-  transform: translateX(-50%);
+  left: 0;
+  right: 0;
   width: 100%;
   max-width: 430px;
+  margin: 0 auto;
   background: var(--bg-primary);
   border-top: 1px solid var(--border);
   display: flex;
   align-items: center;
   padding: 8px 0 env(safe-area-inset-bottom, 16px);
   z-index: 20;
-}
-
-/* 각 탭 스크린 하단 여백 - 탭바에 가리지 않게 */
-.app-shell > div {
-  padding-bottom: 110px;
 }
 
 .nav-item {
