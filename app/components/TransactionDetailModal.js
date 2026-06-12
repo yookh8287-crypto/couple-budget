@@ -1,7 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { X } from 'lucide-react'
+import { X, Check } from 'lucide-react'
+import { supabase } from '@/lib/data'
 
 const EXPENSE_CATEGORIES = [
   { name: '식비', icon: '🛒' }, { name: '외식', icon: '🍽️' }, { name: '카페', icon: '☕' },
@@ -16,92 +17,77 @@ const INCOME_CATEGORIES = [
   { name: '용돈', icon: '💵' }, { name: '환급', icon: '↩️' }, { name: '기타수입', icon: '💸' },
 ]
 
-const PAYMENT_METHODS = [
-  '현대카드', '삼성카드', '신한카드', '국민카드', '롯데카드', '하나카드',
-  '토스뱅크', '카카오페이', '네이버페이', '현금', '계좌이체', '기타',
-]
+function Toggle({ value, onChange }) {
+  return (
+    <div onClick={onChange} style={{
+      width: 44, height: 26, borderRadius: 13, cursor: 'pointer',
+      background: value ? 'var(--blue)' : 'var(--border)',
+      position: 'relative', transition: 'background 0.2s', flexShrink: 0,
+    }}>
+      <div style={{
+        position: 'absolute', top: 3, left: value ? 21 : 3,
+        width: 20, height: 20, borderRadius: '50%', background: 'white', transition: 'left 0.2s',
+      }} />
+    </div>
+  )
+}
 
-export default function AddTransactionModal({ onClose, onAdd }) {
-  const [form, setForm] = useState({
-    name: '',
-    amount: '',
-    category: '식비',
-    who: 'both',
-    type: 'expense',
-    recurring: false,
-    date: new Date().toISOString().split('T')[0],
-    payment_method: '',
-  })
+export default function TransactionDetailModal({ tx, coupleId, onClose, onUpdate }) {
+  const isIncome = tx.amount > 0
+  const categories = isIncome ? INCOME_CATEGORIES : EXPENSE_CATEGORIES
 
-  const categories = form.type === 'expense' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES
+  const [category, setCategory] = useState(tx.category || '')
+  const [memo, setMemo] = useState(tx.memo || '')
+  const [unnecessary, setUnnecessary] = useState(tx.unnecessary || false)
+  const [excluded, setExcluded] = useState(tx.excluded || false)
+  const [saving, setSaving] = useState(false)
 
-  function handleTypeChange(type) {
-    setForm(f => ({ ...f, type, category: type === 'expense' ? '식비' : '급여' }))
+  async function handleSave() {
+    setSaving(true)
+    const icon = categories.find(c => c.name === category)?.icon || tx.icon
+    const updates = { category, icon, memo, unnecessary, excluded }
+    const { error } = await supabase.from('transactions').update(updates).eq('id', tx.id)
+    if (!error) onUpdate({ ...tx, ...updates })
+    setSaving(false)
   }
 
-  function handleSubmit() {
-    if (!form.name || !form.amount) return
-    const amount = form.type === 'expense'
-      ? -Math.abs(parseInt(String(form.amount).replace(/,/g, '')))
-      : Math.abs(parseInt(String(form.amount).replace(/,/g, '')))
-    const icon = categories.find(c => c.name === form.category)?.icon || '💳'
-    onAdd({
-      name: form.name, amount, category: form.category, icon,
-      who: form.who, date: form.date, recurring: form.recurring,
-      unnecessary: false, payment_method: form.payment_method || null,
-    })
-  }
-
-  const inputStyle = {
-    width: '100%', padding: '12px 14px', border: '1px solid var(--border)',
-    borderRadius: 'var(--radius-sm)', fontSize: 14, color: 'var(--text-primary)',
-    background: 'var(--bg-primary)', outline: 'none',
-  }
-  const labelStyle = { fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6, display: 'block' }
+  const labelStyle = { fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 8, display: 'block' }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 50, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-      <div style={{ background: 'var(--bg-primary)', borderRadius: '20px 20px 0 0', padding: '24px 20px 40px', width: '100%', maxWidth: 430, maxHeight: '90vh', overflowY: 'auto' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-          <span style={{ fontSize: 17, fontWeight: 700 }}>내역 추가</span>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 50, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }} onClick={onClose}>
+      <div style={{ background: 'var(--bg-primary)', borderRadius: '20px 20px 0 0', width: '100%', maxWidth: 430, maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+
+        {/* 헤더 */}
+        <div style={{ padding: '20px 20px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: 17, fontWeight: 700 }}>내역 상세</span>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}><X size={22} /></button>
         </div>
 
-        <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-          {['expense', 'income'].map(type => (
-            <button key={type} onClick={() => handleTypeChange(type)} style={{
-              flex: 1, padding: '10px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)',
-              fontWeight: 600, fontSize: 14, cursor: 'pointer',
-              background: form.type === type ? 'var(--blue)' : 'var(--bg-primary)',
-              color: form.type === type ? 'white' : 'var(--text-secondary)',
-            }}>
-              {type === 'expense' ? '지출' : '수입'}
-            </button>
-          ))}
-        </div>
+        <div style={{ padding: '20px 20px 32px', display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div>
-            <label style={labelStyle}>내용</label>
-            <input style={inputStyle} placeholder="어디서 사용했나요?" value={form.name}
-              onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
+          {/* 거래 요약 */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '16px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)' }}>
+            <div style={{ fontSize: 36 }}>{tx.icon}</div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>{tx.name}</div>
+              <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{tx.date} · {tx.payment_method || '결제수단 없음'}</div>
+            </div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: isIncome ? 'var(--green)' : 'var(--text-primary)' }}>
+              {isIncome ? '+' : '-'}{Math.abs(tx.amount).toLocaleString()}원
+            </div>
           </div>
 
-          <div>
-            <label style={labelStyle}>금액</label>
-            <input style={inputStyle} placeholder="0" type="number" value={form.amount}
-              onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} />
-          </div>
-
+          {/* 카테고리 */}
           <div>
             <label style={labelStyle}>카테고리</label>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
               {categories.map(cat => (
-                <button key={cat.name} onClick={() => setForm(f => ({ ...f, category: cat.name }))} style={{
-                  padding: '6px 12px', borderRadius: 20, border: '1px solid var(--border)', fontSize: 13, cursor: 'pointer',
-                  background: form.category === cat.name ? 'var(--blue-light)' : 'var(--bg-primary)',
-                  color: form.category === cat.name ? 'var(--blue)' : 'var(--text-secondary)',
-                  fontWeight: form.category === cat.name ? 600 : 400,
+                <button key={cat.name} onClick={() => setCategory(cat.name)} style={{
+                  padding: '6px 12px', borderRadius: 20, border: '1px solid var(--border)',
+                  fontSize: 13, cursor: 'pointer',
+                  background: category === cat.name ? 'var(--blue-light)' : 'var(--bg-primary)',
+                  color: category === cat.name ? 'var(--blue)' : 'var(--text-secondary)',
+                  fontWeight: category === cat.name ? 700 : 400,
                 }}>
                   {cat.icon} {cat.name}
                 </button>
@@ -109,62 +95,51 @@ export default function AddTransactionModal({ onClose, onAdd }) {
             </div>
           </div>
 
-          {/* 결제수단 */}
+          {/* 메모 */}
           <div>
-            <label style={labelStyle}>결제수단 (선택)</label>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {PAYMENT_METHODS.map(pm => (
-                <button key={pm} onClick={() => setForm(f => ({ ...f, payment_method: f.payment_method === pm ? '' : pm }))} style={{
-                  padding: '6px 12px', borderRadius: 20, border: '1px solid var(--border)', fontSize: 13, cursor: 'pointer',
-                  background: form.payment_method === pm ? 'var(--blue)' : 'var(--bg-primary)',
-                  color: form.payment_method === pm ? 'white' : 'var(--text-secondary)',
-                  fontWeight: form.payment_method === pm ? 600 : 400,
-                }}>
-                  {pm}
-                </button>
-              ))}
-            </div>
+            <label style={labelStyle}>메모</label>
+            <input
+              value={memo}
+              onChange={e => setMemo(e.target.value)}
+              placeholder="메모를 입력하세요"
+              style={{
+                width: '100%', padding: '12px 14px', border: '1px solid var(--border)',
+                borderRadius: 'var(--radius-sm)', fontSize: 14, outline: 'none',
+                background: 'var(--bg-primary)', color: 'var(--text-primary)',
+              }}
+            />
           </div>
 
-          <div>
-            <label style={labelStyle}>누구 지출</label>
-            <div style={{ display: 'flex', gap: 8 }}>
-              {[['both', '공동'], ['h', '남편'], ['w', '아내']].map(([val, label]) => (
-                <button key={val} onClick={() => setForm(f => ({ ...f, who: val }))} style={{
-                  flex: 1, padding: '10px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)',
-                  fontSize: 13, fontWeight: 500, cursor: 'pointer',
-                  background: form.who === val ? 'var(--blue)' : 'var(--bg-primary)',
-                  color: form.who === val ? 'white' : 'var(--text-secondary)',
-                }}>
-                  {label}
-                </button>
-              ))}
+          {/* 토글 옵션 */}
+          {!isIncome && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 0, border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 16px', borderBottom: '1px solid var(--border)' }}>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 600 }}>🚩 불필요한 소비</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>분석탭에서 따로 집계돼요</div>
+                </div>
+                <Toggle value={unnecessary} onChange={() => setUnnecessary(v => !v)} />
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 16px' }}>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 600 }}>🚫 합계에서 제외</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>수입/지출 합계에 포함되지 않아요</div>
+                </div>
+                <Toggle value={excluded} onChange={() => setExcluded(v => !v)} />
+              </div>
             </div>
-          </div>
+          )}
 
-          <div>
-            <label style={labelStyle}>날짜</label>
-            <input style={inputStyle} type="date" value={form.date}
-              onChange={e => setForm(f => ({ ...f, date: e.target.value }))} />
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <label style={{ ...labelStyle, marginBottom: 0 }}>정기 결제</label>
-            <div onClick={() => setForm(f => ({ ...f, recurring: !f.recurring }))} style={{
-              width: 44, height: 26, borderRadius: 13, cursor: 'pointer',
-              background: form.recurring ? 'var(--blue)' : 'var(--border)', position: 'relative', transition: 'background 0.2s',
-            }}>
-              <div style={{ position: 'absolute', top: 3, left: form.recurring ? 21 : 3, width: 20, height: 20, borderRadius: '50%', background: 'white', transition: 'left 0.2s' }} />
-            </div>
-          </div>
+          {/* 저장 버튼 */}
+          <button onClick={handleSave} disabled={saving} style={{
+            width: '100%', padding: '16px', borderRadius: 'var(--radius-md)',
+            background: 'var(--blue)', color: 'white', border: 'none',
+            fontSize: 16, fontWeight: 700, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+          }}>
+            <Check size={18} /> {saving ? '저장 중...' : '저장하기'}
+          </button>
         </div>
-
-        <button onClick={handleSubmit} style={{
-          width: '100%', marginTop: 24, padding: '16px', borderRadius: 'var(--radius-md)',
-          background: 'var(--blue)', color: 'white', border: 'none', fontSize: 16, fontWeight: 700, cursor: 'pointer',
-        }}>
-          추가하기
-        </button>
       </div>
     </div>
   )
