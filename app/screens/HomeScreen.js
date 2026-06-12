@@ -8,7 +8,7 @@ import { X } from 'lucide-react'
 
 const MONTHS = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월']
 
-export default function HomeScreen({ transactions, onToggleUnnecessary, onUpdate, coupleId }) {
+export default function HomeScreen({ transactions, onToggleUnnecessary, onUpdate, onToggleExcluded, onToggleHidden, coupleId }) {
   const [member, setMember] = useState('all')
   const [monthIdx, setMonthIdx] = useState(new Date().getMonth())
   const [year, setYear] = useState(new Date().getFullYear())
@@ -18,7 +18,9 @@ export default function HomeScreen({ transactions, onToggleUnnecessary, onUpdate
   const [modalFilter, setModalFilter] = useState('latest')
 
   useEffect(() => {
-    if (coupleId) getSavings(coupleId).then(setSavings)
+    if (coupleId) {
+      getSavings(coupleId).then(setSavings).catch(() => setSavings([]))
+    }
   }, [coupleId])
 
   function changeMonth(d) {
@@ -35,7 +37,6 @@ export default function HomeScreen({ transactions, onToggleUnnecessary, onUpdate
     setModalFilter('latest')
   }
 
-  // 선택한 월에 해당하는 데이터만 필터링
   const monthFiltered = transactions.filter(t => {
     const d = new Date(t.date)
     return d.getFullYear() === year && d.getMonth() === monthIdx
