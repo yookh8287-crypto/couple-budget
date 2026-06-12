@@ -90,6 +90,7 @@ export default function App() {
   }
 
   async function handleImport(txList) {
+    if (!txList || !Array.isArray(txList) || txList.length === 0) return
     const txWithCouple = txList.map(tx => ({ ...tx, couple_id: profile.couple_id }))
     const { error } = await supabase.from('transactions').insert(txWithCouple)
     if (error) { alert('가져오기 중 오류가 발생했어요.'); return }
@@ -116,17 +117,12 @@ export default function App() {
   if (!user) return <AuthScreen onAuth={(u) => { setUser(u); loadProfile(u.id) }} />
   if (!profile?.couple_id) return <CoupleSetup user={user} profile={profile} onComplete={() => loadProfile(user.id)} />
 
-  const screens = {
-    home: <HomeScreen transactions={transactions} onToggleUnnecessary={handleToggleUnnecessary} onUpdate={handleUpdateTransaction} coupleId={profile.couple_id} onToggleExcluded={handleToggleExcluded} onToggleHidden={handleToggleHidden} />,
-
-    transactions: <TransactionScreen transactions={transactions} onToggleUnnecessary={handleToggleUnnecessary} onUpdate={handleUpdateTransaction} onToggleExcluded={handleToggleExcluded} onToggleHidden={handleToggleHidden} coupleId={profile.couple_id} />,
-    analysis: <AnalysisScreen transactions={transactions} />,
-    settings: <SettingsScreen onImport={() => setShowImport(true)} onSignOut={handleSignOut} user={user} profile={profile} coupleId={profile.couple_id} />,
-  }
-
   return (
     <div className="app-shell">
-      {screens[activeTab]}
+      {activeTab === 'home' && <HomeScreen transactions={transactions} onToggleUnnecessary={handleToggleUnnecessary} onUpdate={handleUpdateTransaction} coupleId={profile.couple_id} onToggleExcluded={handleToggleExcluded} onToggleHidden={handleToggleHidden} />}
+      {activeTab === 'transactions' && <TransactionScreen transactions={transactions} onToggleUnnecessary={handleToggleUnnecessary} onUpdate={handleUpdateTransaction} onToggleExcluded={handleToggleExcluded} onToggleHidden={handleToggleHidden} coupleId={profile.couple_id} />}
+      {activeTab === 'analysis' && <AnalysisScreen transactions={transactions} />}
+      {activeTab === 'settings' && <SettingsScreen onImport={() => setShowImport(true)} onSignOut={handleSignOut} user={user} profile={profile} coupleId={profile.couple_id} />}
       {showAdd && <AddTransactionModal onClose={() => setShowAdd(false)} onAdd={handleAddTransaction} />}
       {showImport && <ImportModal onClose={() => setShowImport(false)} onImport={handleImport} coupleId={profile.couple_id} />}
       <div className="bottom-nav">
