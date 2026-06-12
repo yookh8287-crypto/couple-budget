@@ -52,9 +52,17 @@ export default function ImportModal({ onClose, onImport, coupleId }) {
   }
 
   function parseDate(raw) {
-    if (!raw) return null
+    if (!raw && raw !== 0) return null
+    // 엑셀 시리얼 숫자 처리 (예: 46024)
+    if (typeof raw === 'number') {
+      const d = new Date(Math.round((raw - 25569) * 86400 * 1000))
+      const y = d.getUTCFullYear()
+      const mo = String(d.getUTCMonth() + 1).padStart(2, '0')
+      const day = String(d.getUTCDate()).padStart(2, '0')
+      return `${y}-${mo}-${day}`
+    }
     const s = String(raw).trim()
-    // YYYY.MM.DD or YYYY-MM-DD or YYYY/MM/DD
+    // YYYY-MM-DD, YYYY.MM.DD, YYYY/MM/DD
     const m = s.match(/(\d{4})[.\-\/](\d{1,2})[.\-\/](\d{1,2})/)
     if (m) return `${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`
     return null
