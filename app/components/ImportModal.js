@@ -204,20 +204,28 @@ export default function ImportModal({ onClose, onImport, coupleId }) {
         .eq('couple_id', coupleId)
         .maybeSingle()
 
-      if (existing?.id) {
-        await supabase.from('couple_settings').update({
-          last_import_at: now,
-          last_import_date: endDate,
-          updated_at: now,
-        }).eq('couple_id', coupleId)
-      } else {
-        await supabase.from('couple_settings').insert({
-          couple_id: coupleId,
-          last_import_at: now,
-          last_import_date: endDate,
-          updated_at: now,
-        })
-      }
+    if (existing?.id) {
+    await supabase.from('couple_settings').update({
+        last_import_at: now,
+        last_import_date: (() => {
+        const d = new Date(endDate)
+        d.setDate(d.getDate() + 1)
+        return d.toISOString().split('T')[0]
+        })(),
+        updated_at: now,
+    }).eq('couple_id', coupleId)
+    } else {
+    await supabase.from('couple_settings').insert({
+        couple_id: coupleId,
+        last_import_at: now,
+        last_import_date: (() => {
+        const d = new Date(endDate)
+        d.setDate(d.getDate() + 1)
+        return d.toISOString().split('T')[0]
+        })(),
+        updated_at: now,
+    })
+    }
 
       setStep('done')
     } catch (e) {

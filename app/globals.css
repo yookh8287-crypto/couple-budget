@@ -71,7 +71,6 @@
 
 html {
   overflow-x: hidden;
-  overflow-y: auto;
 }
 
 body {
@@ -79,7 +78,7 @@ body {
   background: var(--bg-tertiary);
   color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
-  overscroll-behavior: none;
+  overscroll-behavior-x: none;
   overflow-x: hidden;
 }
 
@@ -120,8 +119,13 @@ body {
   border-top: 1px solid var(--border);
   display: flex;
   align-items: center;
-  padding: 8px 0 20px;
+  padding: 8px 0 env(safe-area-inset-bottom, 16px);
   z-index: 20;
+}
+
+/* 각 탭 스크린 하단 여백 - 탭바에 가리지 않게 */
+.app-shell > div {
+  padding-bottom: 110px;
 }
 
 .nav-item {
