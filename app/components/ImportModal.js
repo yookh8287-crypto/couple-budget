@@ -11,7 +11,7 @@ function formatDateTimeKR(isoStr) {
   return `${d.getFullYear()}년 ${d.getMonth()+1}월 ${d.getDate()}일 ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`
 }
 
-export default function ImportModal({ onClose, onImport, coupleId }) {
+export default function ImportModal({ onClose, onImport, coupleId, who }) {
   const [step, setStep] = useState('upload') // upload | preview | done
   const [parsed, setParsed] = useState([])
   const [duplicates, setDuplicates] = useState([])
@@ -147,7 +147,7 @@ export default function ImportModal({ onClose, onImport, coupleId }) {
           amount,  // 지출 음수(-), 수입 양수(+) 그대로
           category,
           icon,
-          who: 'h',
+          who: who || 'h',
           recurring: false,
           unnecessary: false,
           excluded: false,
@@ -204,28 +204,28 @@ export default function ImportModal({ onClose, onImport, coupleId }) {
         .eq('couple_id', coupleId)
         .maybeSingle()
 
-    if (existing?.id) {
-    await supabase.from('couple_settings').update({
-        last_import_at: now,
-        last_import_date: (() => {
-        const d = new Date(endDate)
-        d.setDate(d.getDate() + 1)
-        return d.toISOString().split('T')[0]
-        })(),
-        updated_at: now,
-    }).eq('couple_id', coupleId)
-    } else {
-    await supabase.from('couple_settings').insert({
-        couple_id: coupleId,
-        last_import_at: now,
-        last_import_date: (() => {
-        const d = new Date(endDate)
-        d.setDate(d.getDate() + 1)
-        return d.toISOString().split('T')[0]
-        })(),
-        updated_at: now,
-    })
-    }
+        if (existing?.id) {
+        await supabase.from('couple_settings').update({
+            last_import_at: now,
+            last_import_date: (() => {
+            const d = new Date(endDate)
+            d.setDate(d.getDate() + 1)
+            return d.toISOString().split('T')[0]
+            })(),
+            updated_at: now,
+        }).eq('couple_id', coupleId)
+        } else {
+        await supabase.from('couple_settings').insert({
+            couple_id: coupleId,
+            last_import_at: now,
+            last_import_date: (() => {
+            const d = new Date(endDate)
+            d.setDate(d.getDate() + 1)
+            return d.toISOString().split('T')[0]
+            })(),
+            updated_at: now,
+        })
+        }
 
       setStep('done')
     } catch (e) {
