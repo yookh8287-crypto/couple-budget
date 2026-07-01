@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef } from 'react'
-import { X, Upload, CheckCircle, AlertCircle } from 'lucide-react'
+import { X, CheckCircle, AlertCircle } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { supabase } from '@/lib/data'
 
@@ -12,7 +12,7 @@ function formatDateTimeKR(isoStr) {
 }
 
 export default function ImportModal({ onClose, onImport, coupleId, who, userId }) {
-  const [step, setStep] = useState('upload') // upload | preview | done
+  const [step, setStep] = useState('upload')
   const [parsed, setParsed] = useState([])
   const [duplicates, setDuplicates] = useState([])
   const [loading, setLoading] = useState(false)
@@ -22,7 +22,6 @@ export default function ImportModal({ onClose, onImport, coupleId, who, userId }
   const [lastImportAt, setLastImportAt] = useState(null)
   const fileRef = useRef()
 
-  // 날짜 범위 기본값: 이번달 1일 ~ 오늘
   useState(() => {
     const now = new Date()
     const y = now.getFullYear()
@@ -31,7 +30,6 @@ export default function ImportModal({ onClose, onImport, coupleId, who, userId }
     setEndDate(`${y}-${m}-${d}`)
     setStartDate(`${y}-${m}-01`)
 
-    // 마지막 가져오기 날짜 조회 - 본인(userId) 기준으로 조회
     if (coupleId && userId) {
       supabase.from('couple_settings')
         .select('last_import_at, last_import_date')
@@ -54,7 +52,6 @@ export default function ImportModal({ onClose, onImport, coupleId, who, userId }
 
   function parseDate(raw) {
     if (!raw && raw !== 0) return null
-    // 엑셀 시리얼 숫자 처리 (예: 46024)
     if (typeof raw === 'number') {
       const d = new Date(Math.round((raw - 25569) * 86400 * 1000))
       const y = d.getUTCFullYear()
@@ -63,11 +60,13 @@ export default function ImportModal({ onClose, onImport, coupleId, who, userId }
       return `${y}-${mo}-${day}`
     }
     const s = String(raw).trim()
-    // YYYY-MM-DD, YYYY.MM.DD, YYYY/MM/DD
     const m = s.match(/(\d{4})[.\-\/](\d{1,2})[.\-\/](\d{1,2})/)
     if (m) return `${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`
     return null
   }
+
+  // 제외할 대분류 목록
+  const EXCLUDE_BIG_CATS = ['내계좌이체', '이체']
 
   async function handleFile(file) {
     setError('')
@@ -76,7 +75,6 @@ export default function ImportModal({ onClose, onImport, coupleId, who, userId }
       const buf = await file.arrayBuffer()
       const wb = XLSX.read(buf, { type: 'array' })
 
-      // 모든 시트에서 '날짜' 컬럼 있는 시트 찾기 (뱅크샐러드는 '가계부 내역' 탭)
       let ws = null
       for (const sheetName of wb.SheetNames) {
         const sheet = wb.Sheets[sheetName]
@@ -95,25 +93,23 @@ export default function ImportModal({ onClose, onImport, coupleId, who, userId }
       const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' })
       const headers = rows[0].map(c => String(c).trim())
 
-      // 뱅크샐러드 컬럼: 날짜, 시간, 타입, 대분류, 소분류, 내용, 금액, 화폐, 결제수단, 메모
       const col = (name) => headers.indexOf(name)
       const dateCol = col('날짜')
       const typeCol = col('타입')
       const bigCatCol = col('대분류')
-      const smallCatCol = col('소분류')
       const nameCol = col('내용')
       const amountCol = col('금액')
       const paymentCol = col('결제수단')
       const memoCol = col('메모')
 
-      // 카테고리 아이콘 매핑
+      // 대분류 아이콘 매핑
       const catIconMap = {
         '식비': '🛒', '외식': '🍽️', '카페/간식': '☕', '카페': '☕',
         '교통': '⛽', '주거': '🏠', '구독': '📺', '건강': '🏋️',
         '의료': '🏥', '여가': '🎮', '쇼핑': '🛍️', '교육': '📚',
         '금융': '💳', '여행/숙박': '✈️', '문화/여가': '🎭',
         '온라인쇼핑': '🛒', '자동차': '🚗', '반려동물': '🐾',
-        '급여': '💰', '이자/대출': '🏦', '이체': '↔️', '기타': '💳',
+        '급여': '💰', '이자/대출': '🏦', '기타': '💳',
       }
 
       const txList = []
@@ -124,31 +120,32 @@ export default function ImportModal({ onClose, onImport, coupleId, who, userId }
         const date = parseDate(row[dateCol])
         if (!date) continue
 
-        // 날짜 범위 필터
         if (startDate && date < startDate) continue
         if (endDate && date > endDate) continue
 
         const type = String(row[typeCol] || '').trim()
-        // 이체는 제외 (내계좌이체 등)
+        const bigCat = String(row[bigCatCol] || '').trim()
+
+        // 이체 타입 또는 내계좌이체 대분류 제외
         if (type === '이체') continue
+        if (EXCLUDE_BIG_CATS.includes(bigCat)) continue
 
         const amount = parseAmount(row[amountCol])
         if (amount === 0) continue
 
-        const bigCat = String(row[bigCatCol] || '').trim()
-        const smallCat = String(row[smallCatCol] || '').trim()
-        const category = smallCat && smallCat !== '미분류' ? smallCat : bigCat || '기타'
-        const icon = catIconMap[smallCat] || catIconMap[bigCat] || (amount > 0 ? '💰' : '💳')
+        // 카테고리는 대분류 기준으로 사용
+        const category = bigCat || '기타'
+        const icon = catIconMap[bigCat] || (amount > 0 ? '💰' : '💳')
         const payment = paymentCol >= 0 ? String(row[paymentCol] || '').trim() : ''
         const memo = memoCol >= 0 ? String(row[memoCol] || '').trim() : ''
 
         txList.push({
           date,
           name: String(row[nameCol] || '').trim() || '내역없음',
-          amount,  // 지출 음수(-), 수입 양수(+) 그대로
+          amount,
           category,
           icon,
-          who: who || 'h',  // 로그인한 사용자 본인으로 자동 지정
+          who: who || 'h',
           recurring: false,
           unnecessary: false,
           excluded: false,
@@ -197,7 +194,6 @@ export default function ImportModal({ onClose, onImport, coupleId, who, userId }
     try {
       await onImport(parsed)
 
-      // last_import_at 저장 - 본인(userId) 기준으로 저장
       const now = new Date().toISOString()
       const nextStartDate = (() => {
         const d = new Date(endDate)
@@ -239,7 +235,6 @@ export default function ImportModal({ onClose, onImport, coupleId, who, userId }
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 100, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }} onClick={onClose}>
       <div style={{ background: 'var(--bg-primary)', borderRadius: '20px 20px 0 0', width: '100%', maxWidth: 430, maxHeight: '90vh', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
 
-        {/* 헤더 */}
         <div style={{ padding: '20px 20px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ fontSize: 22 }}>🏦</span>
@@ -250,7 +245,6 @@ export default function ImportModal({ onClose, onImport, coupleId, who, userId }
 
         <div style={{ overflowY: 'auto', flex: 1, padding: '16px 20px 32px' }}>
 
-          {/* 마지막 가져오기 */}
           {lastImportAt && step === 'upload' && (
             <div style={{ padding: '10px 14px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', marginBottom: 16, fontSize: 12, color: 'var(--text-secondary)' }}>
               내 마지막 가져오기: <strong style={{ color: 'var(--text-primary)' }}>{formatDateTimeKR(lastImportAt)}</strong>
@@ -259,7 +253,6 @@ export default function ImportModal({ onClose, onImport, coupleId, who, userId }
 
           {step === 'upload' && (
             <>
-              {/* 날짜 범위 */}
               <div style={{ marginBottom: 20 }}>
                 <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 10 }}>가져올 날짜 범위</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -271,7 +264,6 @@ export default function ImportModal({ onClose, onImport, coupleId, who, userId }
                 </div>
               </div>
 
-              {/* 파일 업로드 */}
               <div onClick={() => fileRef.current?.click()}
                 style={{ border: '2px dashed var(--border)', borderRadius: 'var(--radius-md)', padding: '40px 20px', textAlign: 'center', cursor: 'pointer', background: 'var(--bg-secondary)' }}>
                 <div style={{ fontSize: 36, marginBottom: 12 }}>📂</div>
@@ -316,7 +308,7 @@ export default function ImportModal({ onClose, onImport, coupleId, who, userId }
                         <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>{tx.date} · {tx.category}</div>
                       </div>
                       <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>
-                        -{tx.amount.toLocaleString()}원
+                        {tx.amount < 0 ? '-' : '+'}{Math.abs(tx.amount).toLocaleString()}원
                       </div>
                     </div>
                   ))}
