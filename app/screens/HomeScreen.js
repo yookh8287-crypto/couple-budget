@@ -42,16 +42,21 @@ export default function HomeScreen({ transactions, onToggleUnnecessary, onUpdate
     return d.getFullYear() === year && d.getMonth() === monthIdx
   })
 
-  const activeMonthFiltered = monthFiltered.filter(t => !t.excluded && !t.hidden)
-  const filtered = filterByMember(activeMonthFiltered, member)
-  const incomeList = filtered.filter(t => t.amount > 0)
-  const expenseList = filtered.filter(t => t.amount < 0)
+  // 멤버 필터만 적용 (excluded 항목도 목록에 표시)
+  const filtered = filterByMember(monthFiltered, member)
+
+  // 합계 계산에서만 excluded 제외
+  const activeFiltered = filtered.filter(t => !t.excluded)
+  const incomeList = activeFiltered.filter(t => t.amount > 0)
+  const expenseList = activeFiltered.filter(t => t.amount < 0)
   const income = incomeList.reduce((s, t) => s + t.amount, 0)
   const expense = expenseList.reduce((s, t) => s + Math.abs(t.amount), 0)
   const remain = income - expense
   const budget = 5000000
   const budgetPct = Math.min(Math.round((expense / budget) * 100), 100)
   const fillClass = budgetPct >= 100 ? 'fill-red' : budgetPct >= 80 ? 'fill-amber' : 'fill-green'
+
+  // 목록은 excluded 포함해서 표시 (TransactionItem에서 그레이+취소선 처리)
   const filteredAndSorted = applyFilter(filtered, filter)
 
   const modalConfig = {

@@ -11,7 +11,7 @@ function formatDateTimeKR(isoStr) {
   return `${d.getFullYear()}년 ${d.getMonth()+1}월 ${d.getDate()}일 ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`
 }
 
-export default function ImportModal({ onClose, onImport, coupleId, who }) {
+export default function ImportModal({ onClose, onImport, coupleId, who, userId }) {
   const [step, setStep] = useState('upload') // upload | preview | done
   const [parsed, setParsed] = useState([])
   const [duplicates, setDuplicates] = useState([])
@@ -31,11 +31,12 @@ export default function ImportModal({ onClose, onImport, coupleId, who }) {
     setEndDate(`${y}-${m}-${d}`)
     setStartDate(`${y}-${m}-01`)
 
-    // 마지막 가져오기 날짜 조회
-    if (coupleId) {
+    // 마지막 가져오기 날짜 조회 - 본인(userId) 기준으로 조회
+    if (coupleId && userId) {
       supabase.from('couple_settings')
         .select('last_import_at, last_import_date')
         .eq('couple_id', coupleId)
+        .eq('user_id', userId)
         .maybeSingle()
         .then(({ data }) => {
           if (data?.last_import_at) {
@@ -44,7 +45,7 @@ export default function ImportModal({ onClose, onImport, coupleId, who }) {
           }
         })
     }
-  }, [coupleId])
+  }, [coupleId, userId])
 
   function parseAmount(raw) {
     if (!raw) return 0
@@ -147,7 +148,7 @@ export default function ImportModal({ onClose, onImport, coupleId, who }) {
           amount,  // 지출 음수(-), 수입 양수(+) 그대로
           category,
           icon,
-          who: who || 'h',
+          who: who || 'h',  // 로그인한 사용자 본인으로 자동 지정
           recurring: false,
           unnecessary: false,
           excluded: false,
@@ -196,36 +197,36 @@ export default function ImportModal({ onClose, onImport, coupleId, who }) {
     try {
       await onImport(parsed)
 
-      // last_import_at 저장
+      // last_import_at 저장 - 본인(userId) 기준으로 저장
       const now = new Date().toISOString()
+      const nextStartDate = (() => {
+        const d = new Date(endDate)
+        d.setDate(d.getDate() + 1)
+        return d.toISOString().split('T')[0]
+      })()
+
       const { data: existing } = await supabase
         .from('couple_settings')
         .select('id')
         .eq('couple_id', coupleId)
+        .eq('user_id', userId)
         .maybeSingle()
 
-        if (existing?.id) {
+      if (existing?.id) {
         await supabase.from('couple_settings').update({
-            last_import_at: now,
-            last_import_date: (() => {
-            const d = new Date(endDate)
-            d.setDate(d.getDate() + 1)
-            return d.toISOString().split('T')[0]
-            })(),
-            updated_at: now,
-        }).eq('couple_id', coupleId)
-        } else {
+          last_import_at: now,
+          last_import_date: nextStartDate,
+          updated_at: now,
+        }).eq('id', existing.id)
+      } else {
         await supabase.from('couple_settings').insert({
-            couple_id: coupleId,
-            last_import_at: now,
-            last_import_date: (() => {
-            const d = new Date(endDate)
-            d.setDate(d.getDate() + 1)
-            return d.toISOString().split('T')[0]
-            })(),
-            updated_at: now,
+          couple_id: coupleId,
+          user_id: userId,
+          last_import_at: now,
+          last_import_date: nextStartDate,
+          updated_at: now,
         })
-        }
+      }
 
       setStep('done')
     } catch (e) {
@@ -252,7 +253,7 @@ export default function ImportModal({ onClose, onImport, coupleId, who }) {
           {/* 마지막 가져오기 */}
           {lastImportAt && step === 'upload' && (
             <div style={{ padding: '10px 14px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', marginBottom: 16, fontSize: 12, color: 'var(--text-secondary)' }}>
-              마지막 가져오기: <strong style={{ color: 'var(--text-primary)' }}>{formatDateTimeKR(lastImportAt)}</strong>
+              내 마지막 가져오기: <strong style={{ color: 'var(--text-primary)' }}>{formatDateTimeKR(lastImportAt)}</strong>
             </div>
           )}
 

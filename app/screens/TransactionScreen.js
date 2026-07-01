@@ -29,14 +29,17 @@ export default function TransactionScreen({ transactions, onToggleUnnecessary, o
     const d = new Date(t.date)
     return d.getFullYear() === year && d.getMonth() === monthIdx
   })
+
+  // 멤버 필터만 적용 (excluded 항목도 목록에 표시)
   const memberFiltered = filterByMember(monthFiltered, member)
+
+  // 달력 및 합계 계산에서만 excluded 제외
   const activeFiltered = memberFiltered.filter(t => !t.excluded)
 
-  // 달력 데이터
+  // 달력 데이터 (excluded 제외)
   const firstDay = new Date(year, monthIdx, 1).getDay()
   const daysInMonth = new Date(year, monthIdx + 1, 0).getDate()
 
-  // 날짜별 수입/지출 집계
   const dayTotals = {}
   activeFiltered.forEach(t => {
     const day = new Date(t.date).getDate()
@@ -45,10 +48,10 @@ export default function TransactionScreen({ transactions, onToggleUnnecessary, o
     else dayTotals[day].expense += Math.abs(t.amount)
   })
 
-  // 선택된 날짜 또는 전체 내역
+  // 목록은 excluded 포함 (TransactionItem에서 그레이+취소선 처리)
   const displayList = selectedDate
-    ? activeFiltered.filter(t => new Date(t.date).getDate() === selectedDate)
-    : applyFilter(activeFiltered, filter)
+    ? memberFiltered.filter(t => new Date(t.date).getDate() === selectedDate)
+    : applyFilter(memberFiltered, filter)
 
   const totalIncome = activeFiltered.filter(t => t.amount > 0).reduce((s, t) => s + t.amount, 0)
   const totalExpense = activeFiltered.filter(t => t.amount < 0).reduce((s, t) => s + Math.abs(t.amount), 0)
