@@ -1,352 +1,145 @@
 'use client'
 
-import { useState, useRef } from 'react'
-import { X, CheckCircle, AlertCircle } from 'lucide-react'
-import * as XLSX from 'xlsx'
-import { supabase } from '@/lib/data'
+import { useState, useEffect } from 'react'
+import { Home, List, PieChart, Settings, Plus } from 'lucide-react'
+import HomeScreen from './screens/HomeScreen'
+import TransactionScreen from './screens/TransactionScreen'
+import AnalysisScreen from './screens/AnalysisScreen'
+import SettingsScreen from './screens/SettingsScreen'
+import AddTransactionModal from './components/AddTransactionModal'
+import ImportModal from './components/ImportModal'
+import AuthScreen from './components/AuthScreen'
+import CoupleSetup from './components/CoupleSetup'
+import { getTransactions, addTransaction, toggleUnnecessary, supabase } from '../lib/data'
+import { getUser, getProfile, signOut } from '../lib/auth'
+import './globals.css'
 
-function formatDateTimeKR(isoStr) {
-  if (!isoStr) return null
-  const d = new Date(isoStr)
-  return `${d.getFullYear()}년 ${d.getMonth()+1}월 ${d.getDate()}일 ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`
-}
+export default function App() {
+  const [activeTab, setActiveTab] = useState('home')
+  const [transactions, setTransactions] = useState([])
+  const [showAdd, setShowAdd] = useState(false)
+  const [showImport, setShowImport] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [user, setUser] = useState(null)
+  const [profile, setProfile] = useState(null)
 
-export default function ImportModal({ onClose, onImport, coupleId, who, userId }) {
-  const [step, setStep] = useState('upload')
-  const [parsed, setParsed] = useState([])
-  const [duplicates, setDuplicates] = useState([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-  const [startDate, setStartDate] = useState('')
-  const [endDate, setEndDate] = useState('')
-  const [lastImportAt, setLastImportAt] = useState(null)
-  const fileRef = useRef()
-
-  useState(() => {
-    const now = new Date()
-    const y = now.getFullYear()
-    const m = String(now.getMonth() + 1).padStart(2, '0')
-    const d = String(now.getDate()).padStart(2, '0')
-    setEndDate(`${y}-${m}-${d}`)
-    setStartDate(`${y}-${m}-01`)
-
-    if (coupleId && userId) {
-      supabase.from('couple_settings')
-        .select('last_import_at, last_import_date')
-        .eq('couple_id', coupleId)
-        .eq('user_id', userId)
-        .maybeSingle()
-        .then(({ data }) => {
-          if (data?.last_import_at) {
-            setLastImportAt(data.last_import_at)
-            if (data.last_import_date) setStartDate(data.last_import_date)
-          }
-        })
-    }
-  }, [coupleId, userId])
-
-  function parseAmount(raw) {
-    if (!raw) return 0
-    return parseInt(String(raw).replace(/[^0-9-]/g, '')) || 0
-  }
-
-  function parseDate(raw) {
-    if (!raw && raw !== 0) return null
-    if (typeof raw === 'number') {
-      const d = new Date(Math.round((raw - 25569) * 86400 * 1000))
-      const y = d.getUTCFullYear()
-      const mo = String(d.getUTCMonth() + 1).padStart(2, '0')
-      const day = String(d.getUTCDate()).padStart(2, '0')
-      return `${y}-${mo}-${day}`
-    }
-    const s = String(raw).trim()
-    const m = s.match(/(\d{4})[.\-\/](\d{1,2})[.\-\/](\d{1,2})/)
-    if (m) return `${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`
-    return null
-  }
-
-  // 제외할 대분류 목록
-  const EXCLUDE_BIG_CATS = ['내계좌이체', '이체']
-
-  async function handleFile(file) {
-    setError('')
-    setLoading(true)
-    try {
-      const buf = await file.arrayBuffer()
-      const wb = XLSX.read(buf, { type: 'array' })
-
-      let ws = null
-      for (const sheetName of wb.SheetNames) {
-        const sheet = wb.Sheets[sheetName]
-        const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' })
-        if (rows.length > 0) {
-          const firstRow = rows[0].map(c => String(c).trim())
-          if (firstRow.includes('날짜')) { ws = sheet; break }
-        }
-      }
-      if (!ws) {
-        setError('날짜 컬럼을 찾을 수 없어요. 뱅크샐러드 엑셀 파일인지 확인해주세요.')
-        setLoading(false)
-        return
-      }
-
-      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' })
-      const headers = rows[0].map(c => String(c).trim())
-
-      const col = (name) => headers.indexOf(name)
-      const dateCol = col('날짜')
-      const typeCol = col('타입')
-      const bigCatCol = col('대분류')
-      const nameCol = col('내용')
-      const amountCol = col('금액')
-      const paymentCol = col('결제수단')
-      const memoCol = col('메모')
-
-      // 대분류 아이콘 매핑
-      const catIconMap = {
-        '식비': '🛒', '외식': '🍽️', '카페/간식': '☕', '카페': '☕',
-        '교통': '⛽', '주거': '🏠', '구독': '📺', '건강': '🏋️',
-        '의료': '🏥', '여가': '🎮', '쇼핑': '🛍️', '교육': '📚',
-        '금융': '💳', '여행/숙박': '✈️', '문화/여가': '🎭',
-        '온라인쇼핑': '🛒', '자동차': '🚗', '반려동물': '🐾',
-        '급여': '💰', '이자/대출': '🏦', '기타': '💳',
-      }
-
-      const txList = []
-      for (let i = 1; i < rows.length; i++) {
-        const row = rows[i]
-        if (!row || row.every(c => c === '')) continue
-
-        const date = parseDate(row[dateCol])
-        if (!date) continue
-
-        if (startDate && date < startDate) continue
-        if (endDate && date > endDate) continue
-
-        const type = String(row[typeCol] || '').trim()
-        const bigCat = String(row[bigCatCol] || '').trim()
-
-        // 이체 타입 또는 내계좌이체 대분류 제외
-        if (type === '이체') continue
-        if (EXCLUDE_BIG_CATS.includes(bigCat)) continue
-
-        const amount = parseAmount(row[amountCol])
-        if (amount === 0) continue
-
-        // 카테고리는 대분류 기준으로 사용
-        const category = bigCat || '기타'
-        const icon = catIconMap[bigCat] || (amount > 0 ? '💰' : '💳')
-        const payment = paymentCol >= 0 ? String(row[paymentCol] || '').trim() : ''
-        const memo = memoCol >= 0 ? String(row[memoCol] || '').trim() : ''
-
-        txList.push({
-          date,
-          name: String(row[nameCol] || '').trim() || '내역없음',
-          amount,
-          category,
-          icon,
-          who: who || 'h',
-          recurring: false,
-          unnecessary: false,
-          excluded: false,
-          hidden: false,
-          couple_id: coupleId,
-          memo,
-          payment_method: payment,
-        })
-      }
-
-      if (txList.length === 0) {
-        setError('가져올 내역이 없어요. 날짜 범위를 확인해주세요.')
-        setLoading(false)
-        return
-      }
-
-      // 중복 체크
-      const { data: existing } = await supabase
-        .from('transactions')
-        .select('name, amount, date')
-        .eq('couple_id', coupleId)
-        .gte('date', startDate || '2000-01-01')
-        .lte('date', endDate || '2099-12-31')
-
-      const existingSet = new Set((existing || []).map(t => `${t.date}|${t.name}|${t.amount}`))
-      const newTxs = []
-      const dupTxs = []
-      for (const tx of txList) {
-        const key = `${tx.date}|${tx.name}|${tx.amount}`
-        if (existingSet.has(key)) dupTxs.push(tx)
-        else newTxs.push(tx)
-      }
-
-      setParsed(newTxs)
-      setDuplicates(dupTxs)
-      setStep('preview')
-    } catch (e) {
-      setError('파일을 읽는 중 오류가 발생했어요: ' + e.message)
-    }
-    setLoading(false)
-  }
-
-  async function handleConfirm() {
-    if (parsed.length === 0) return
-    setLoading(true)
-    try {
-      await onImport(parsed)
-
-      const now = new Date().toISOString()
-      const nextStartDate = (() => {
-        const d = new Date(endDate)
-        d.setDate(d.getDate() + 1)
-        return d.toISOString().split('T')[0]
-      })()
-
-      const { data: existing } = await supabase
-        .from('couple_settings')
-        .select('id')
-        .eq('couple_id', coupleId)
-        .eq('user_id', userId)
-        .maybeSingle()
-
-      if (existing?.id) {
-        await supabase.from('couple_settings').update({
-          last_import_at: now,
-          last_import_date: nextStartDate,
-          updated_at: now,
-        }).eq('id', existing.id)
+  useEffect(() => {
+    checkAuth()
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        setUser(session.user)
+        loadProfile(session.user.id)
       } else {
-        await supabase.from('couple_settings').insert({
-          couple_id: coupleId,
-          user_id: userId,
-          last_import_at: now,
-          last_import_date: nextStartDate,
-          updated_at: now,
-        })
+        setUser(null)
+        setProfile(null)
+        setLoading(false)
       }
+    })
+    return () => subscription.unsubscribe()
+  }, [])
 
-      setStep('done')
-    } catch (e) {
-      setError('저장 중 오류가 발생했어요.')
+  async function checkAuth() {
+    const user = await getUser()
+    if (user) {
+      setUser(user)
+      await loadProfile(user.id)
     }
     setLoading(false)
   }
+
+  async function loadProfile(userId) {
+    const prof = await getProfile(userId)
+    setProfile(prof)
+    if (prof?.couple_id) loadTransactions(prof.couple_id)
+  }
+
+  async function loadTransactions(coupleId) {
+    const data = await getTransactions(coupleId)
+    setTransactions(data)
+  }
+
+  async function handleToggleUnnecessary(id) {
+    const tx = transactions.find(t => t.id === id)
+    if (!tx) return
+    await toggleUnnecessary(id, !tx.unnecessary)
+    setTransactions(prev => prev.map(t => t.id === id ? { ...t, unnecessary: !t.unnecessary } : t))
+  }
+
+  async function handleToggleHidden(id) {
+    const tx = transactions.find(t => t.id === id)
+    if (!tx) return
+    const { error } = await supabase.from('transactions').update({ hidden: !tx.hidden }).eq('id', tx.id)
+    if (!error) setTransactions(prev => prev.map(t => t.id === id ? { ...t, hidden: !t.hidden } : t))
+  }
+
+  async function handleToggleExcluded(id) {
+    const tx = transactions.find(t => t.id === id)
+    if (!tx) return
+    const { error } = await supabase.from('transactions').update({ excluded: !tx.excluded }).eq('id', tx.id)
+    if (!error) setTransactions(prev => prev.map(t => t.id === id ? { ...t, excluded: !t.excluded } : t))
+  }
+
+  async function handleAddTransaction(tx) {
+    const newTx = await addTransaction(tx, profile.couple_id)
+    if (newTx) setTransactions(prev => [newTx, ...prev])
+    setShowAdd(false)
+  }
+
+  function handleUpdateTransaction(updated) {
+    setTransactions(prev => prev.map(t => t.id === updated.id ? updated : t))
+  }
+
+  async function handleImport(txList) {
+    if (!txList || !Array.isArray(txList) || txList.length === 0) return
+    const txWithCouple = txList.map(tx => ({ ...tx, couple_id: profile.couple_id }))
+    const { error } = await supabase.from('transactions').insert(txWithCouple)
+    if (error) { alert('가져오기 중 오류가 발생했어요.'); return }
+    await loadTransactions(profile.couple_id)
+  }
+
+  async function handleSignOut() {
+    await signOut()
+    setUser(null)
+    setProfile(null)
+    setTransactions([])
+    window.location.reload()
+  }
+
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', flexDirection: 'column', gap: 12, background: 'var(--bg-tertiary)' }}>
+        <div style={{ fontSize: 32 }}>🐷</div>
+        <div style={{ fontSize: 15, color: 'var(--text-secondary)', fontWeight: 500 }}>불러오는 중...</div>
+      </div>
+    )
+  }
+
+  if (!user) return <AuthScreen onAuth={(u) => { setUser(u); loadProfile(u.id) }} />
+  if (!profile?.couple_id) return <CoupleSetup user={user} profile={profile} onComplete={() => loadProfile(user.id)} />
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 100, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }} onClick={onClose}>
-      <div style={{ background: 'var(--bg-primary)', borderRadius: '20px 20px 0 0', width: '100%', maxWidth: 430, maxHeight: '90vh', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
-
-        <div style={{ padding: '20px 20px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 22 }}>🏦</span>
-            <span style={{ fontSize: 16, fontWeight: 700 }}>뱅크샐러드 가져오기</span>
-          </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}><X size={22} /></button>
+    <div className="app-shell">
+      {activeTab === 'home' && <HomeScreen transactions={transactions} onToggleUnnecessary={handleToggleUnnecessary} onUpdate={handleUpdateTransaction} coupleId={profile.couple_id} onToggleExcluded={handleToggleExcluded} onToggleHidden={handleToggleHidden} />}
+      {activeTab === 'transactions' && <TransactionScreen transactions={transactions} onToggleUnnecessary={handleToggleUnnecessary} onUpdate={handleUpdateTransaction} onToggleExcluded={handleToggleExcluded} onToggleHidden={handleToggleHidden} coupleId={profile.couple_id} />}
+      {activeTab === 'analysis' && <AnalysisScreen transactions={transactions} />}
+      {activeTab === 'settings' && <SettingsScreen onImport={() => setShowImport(true)} onSignOut={handleSignOut} user={user} profile={profile} coupleId={profile.couple_id} />}
+      {showAdd && <AddTransactionModal onClose={() => setShowAdd(false)} onAdd={handleAddTransaction} />}
+      {showImport && <ImportModal onClose={() => setShowImport(false)} onImport={handleImport} coupleId={profile.couple_id} who={profile.role} userId={user.id} />}
+      <div className="bottom-nav">
+        <div className={`nav-item ${activeTab === 'home' ? 'active' : ''}`} onClick={() => setActiveTab('home')}>
+          <Home size={22} /><span>홈</span>
         </div>
-
-        <div style={{ overflowY: 'auto', flex: 1, padding: '16px 20px 32px' }}>
-
-          {lastImportAt && step === 'upload' && (
-            <div style={{ padding: '10px 14px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', marginBottom: 16, fontSize: 12, color: 'var(--text-secondary)' }}>
-              내 마지막 가져오기: <strong style={{ color: 'var(--text-primary)' }}>{formatDateTimeKR(lastImportAt)}</strong>
-            </div>
-          )}
-
-          {step === 'upload' && (
-            <>
-              <div style={{ marginBottom: 20 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 10 }}>가져올 날짜 범위</div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
-                    style={{ flex: 1, padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', fontSize: 14, background: 'var(--bg-primary)', color: 'var(--text-primary)', outline: 'none' }} />
-                  <span style={{ color: 'var(--text-secondary)', fontSize: 13 }}>~</span>
-                  <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)}
-                    style={{ flex: 1, padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', fontSize: 14, background: 'var(--bg-primary)', color: 'var(--text-primary)', outline: 'none' }} />
-                </div>
-              </div>
-
-              <div onClick={() => fileRef.current?.click()}
-                style={{ border: '2px dashed var(--border)', borderRadius: 'var(--radius-md)', padding: '40px 20px', textAlign: 'center', cursor: 'pointer', background: 'var(--bg-secondary)' }}>
-                <div style={{ fontSize: 36, marginBottom: 12 }}>📂</div>
-                <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 6 }}>엑셀 파일 선택</div>
-                <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>뱅크샐러드 → 내보내기 → 엑셀(.xlsx)</div>
-              </div>
-              <input ref={fileRef} type="file" accept=".xlsx,.xls" style={{ display: 'none' }}
-                onChange={e => { if (e.target.files[0]) handleFile(e.target.files[0]) }} />
-
-              {error && (
-                <div style={{ marginTop: 14, padding: '12px 14px', background: '#fff0f0', borderRadius: 'var(--radius-sm)', display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-                  <AlertCircle size={16} color="#e03" style={{ flexShrink: 0, marginTop: 1 }} />
-                  <span style={{ fontSize: 13, color: '#c00' }}>{error}</span>
-                </div>
-              )}
-              {loading && <div style={{ textAlign: 'center', marginTop: 20, color: 'var(--text-secondary)', fontSize: 14 }}>파일 분석 중...</div>}
-            </>
-          )}
-
-          {step === 'preview' && (
-            <>
-              <div style={{ marginBottom: 16 }}>
-                <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 6 }}>가져오기 미리보기</div>
-                <div style={{ display: 'flex', gap: 10 }}>
-                  <div style={{ flex: 1, padding: '12px', background: 'var(--green-light)', borderRadius: 'var(--radius-sm)', textAlign: 'center' }}>
-                    <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--green)' }}>{parsed.length}</div>
-                    <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>새 내역</div>
-                  </div>
-                  <div style={{ flex: 1, padding: '12px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', textAlign: 'center' }}>
-                    <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--text-secondary)' }}>{duplicates.length}</div>
-                    <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>중복 (건너뜀)</div>
-                  </div>
-                </div>
-              </div>
-
-              {parsed.length > 0 && (
-                <div style={{ maxHeight: 280, overflowY: 'auto', marginBottom: 16 }}>
-                  {parsed.slice(0, 30).map((tx, i) => (
-                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', marginBottom: 6 }}>
-                      <div>
-                        <div style={{ fontSize: 13, fontWeight: 600 }}>{tx.name}</div>
-                        <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>{tx.date} · {tx.category}</div>
-                      </div>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>
-                        {tx.amount < 0 ? '-' : '+'}{Math.abs(tx.amount).toLocaleString()}원
-                      </div>
-                    </div>
-                  ))}
-                  {parsed.length > 30 && (
-                    <div style={{ textAlign: 'center', fontSize: 12, color: 'var(--text-secondary)', padding: '8px 0' }}>
-                      외 {parsed.length - 30}건 더...
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {error && (
-                <div style={{ marginBottom: 14, padding: '12px 14px', background: '#fff0f0', borderRadius: 'var(--radius-sm)', fontSize: 13, color: '#c00' }}>{error}</div>
-              )}
-
-              <div style={{ display: 'flex', gap: 10 }}>
-                <button onClick={() => { setStep('upload'); setParsed([]); setDuplicates([]); setError('') }}
-                  style={{ flex: 1, padding: '14px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)', background: 'none', fontSize: 14, fontWeight: 600, cursor: 'pointer', color: 'var(--text-secondary)' }}>
-                  다시 선택
-                </button>
-                <button onClick={handleConfirm} disabled={loading || parsed.length === 0}
-                  style={{ flex: 2, padding: '14px', borderRadius: 'var(--radius-md)', border: 'none', background: parsed.length > 0 ? 'var(--blue)' : 'var(--border)', color: 'white', fontSize: 14, fontWeight: 700, cursor: parsed.length > 0 ? 'pointer' : 'default' }}>
-                  {loading ? '저장 중...' : `${parsed.length}건 가져오기`}
-                </button>
-              </div>
-            </>
-          )}
-
-          {step === 'done' && (
-            <div style={{ textAlign: 'center', padding: '30px 0' }}>
-              <CheckCircle size={52} color="var(--green)" style={{ marginBottom: 16 }} />
-              <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>가져오기 완료!</div>
-              <div style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 28 }}>{parsed.length}건이 추가됐어요.</div>
-              <button onClick={onClose} style={{ padding: '14px 40px', borderRadius: 'var(--radius-md)', background: 'var(--blue)', color: 'white', border: 'none', fontSize: 15, fontWeight: 700, cursor: 'pointer' }}>
-                확인
-              </button>
-            </div>
-          )}
+        <div className={`nav-item ${activeTab === 'transactions' ? 'active' : ''}`} onClick={() => setActiveTab('transactions')}>
+          <List size={22} /><span>내역</span>
+        </div>
+        <button className="nav-add-btn" onClick={() => setShowAdd(true)}>
+          <Plus size={24} />
+        </button>
+        <div className={`nav-item ${activeTab === 'analysis' ? 'active' : ''}`} onClick={() => setActiveTab('analysis')}>
+          <PieChart size={22} /><span>분석</span>
+        </div>
+        <div className={`nav-item ${activeTab === 'settings' ? 'active' : ''}`} onClick={() => setActiveTab('settings')}>
+          <Settings size={22} /><span>설정</span>
         </div>
       </div>
     </div>
