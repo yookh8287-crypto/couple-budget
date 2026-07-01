@@ -65,9 +65,6 @@ export default function ImportModal({ onClose, onImport, coupleId, who, userId }
     return null
   }
 
-  // 제외할 대분류 목록
-  const EXCLUDE_BIG_CATS = ['내계좌이체', '이체']
-
   async function handleFile(file) {
     setError('')
     setLoading(true)
@@ -95,21 +92,19 @@ export default function ImportModal({ onClose, onImport, coupleId, who, userId }
 
       const col = (name) => headers.indexOf(name)
       const dateCol = col('날짜')
-      const typeCol = col('타입')
       const bigCatCol = col('대분류')
       const nameCol = col('내용')
       const amountCol = col('금액')
       const paymentCol = col('결제수단')
       const memoCol = col('메모')
 
-      // 대분류 아이콘 매핑
       const catIconMap = {
         '식비': '🛒', '외식': '🍽️', '카페/간식': '☕', '카페': '☕',
         '교통': '⛽', '주거': '🏠', '구독': '📺', '건강': '🏋️',
         '의료': '🏥', '여가': '🎮', '쇼핑': '🛍️', '교육': '📚',
         '금융': '💳', '여행/숙박': '✈️', '문화/여가': '🎭',
         '온라인쇼핑': '🛒', '자동차': '🚗', '반려동물': '🐾',
-        '급여': '💰', '이자/대출': '🏦', '기타': '💳',
+        '급여': '💰', '이자/대출': '🏦', '내계좌이체': '↔️', '이체': '↔️', '기타': '💳',
       }
 
       const txList = []
@@ -123,17 +118,10 @@ export default function ImportModal({ onClose, onImport, coupleId, who, userId }
         if (startDate && date < startDate) continue
         if (endDate && date > endDate) continue
 
-        const type = String(row[typeCol] || '').trim()
-        const bigCat = String(row[bigCatCol] || '').trim()
-
-        // 이체 타입 또는 내계좌이체 대분류 제외
-        if (type === '이체') continue
-        if (EXCLUDE_BIG_CATS.includes(bigCat)) continue
-
         const amount = parseAmount(row[amountCol])
         if (amount === 0) continue
 
-        // 카테고리는 대분류 기준으로 사용
+        const bigCat = String(row[bigCatCol] || '').trim()
         const category = bigCat || '기타'
         const icon = catIconMap[bigCat] || (amount > 0 ? '💰' : '💳')
         const payment = paymentCol >= 0 ? String(row[paymentCol] || '').trim() : ''
